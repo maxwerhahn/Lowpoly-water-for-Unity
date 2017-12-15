@@ -1,54 +1,57 @@
 ﻿using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 
 public class HeightField : MonoBehaviour
 {
-    public int width;
-    public int depth;
+    public int width;                       ///  width of height field
+    public int depth;                       ///  depth of height field
 
-    public float speed;
-    public float size;
+    public float speed;                     ///  speed of waves
+    //private float size;                     //  grid spacing
 
-    public float quadSize;
-    public float maxHeight;
-    public float randVel;
+    public float quadSize;                  ///  size of one quad
+    public float maxHeight;                 ///  maximum height in height field
+    public float maxVelocity;               ///  maximum velocity of vertices
+    public float randVelocity;              ///  apply random velocity to randomly chosen vertices
+    public float dampingVelocity;           ///  damping factor for velocities
 
-    public double[,] heights;
-    public double[,] velocities;
+    private double[] heights;               ///  store height values
+    private double[] velocities;            ///  store velocities
 
-    private Vector3[] newVertices;
-    private Vector2[] newUV;
-    private Color[] colors;
-    private int[] newTriangles;
-
-    public Material mat;
-    public Mesh mesh;
+    private Vector3[] newVertices;          ///  store vertices of mesh
+    private int[] newTriangles;             ///  store triangles of mesh
 
     void Start()
     {
-        size = 0.5f;
-        heights = new double[width, depth];
-        velocities = new double[width, depth];
+        Vector2[] newUV;
+
+        //size = 1.2f;
+        dampingVelocity = 1f;
+        heights = new double[width * depth];
+        velocities = new double[width * depth];
         newVertices = new Vector3[width * depth];
         newTriangles = new int[(width - 1) * (depth - 1) * 6];
         newUV = new Vector2[newVertices.Length];
 
+        //  initialize vertices positions
         for (int i = 0; i < width; i++)
         {
             for (int j = 0; j < depth; j++)
             {
-                heights[i, j] = maxHeight * (Mathf.Sin((i / (float)width + j / (float)depth)) - (Mathf.Cos((i) / (float)width)));
-                velocities[i, j] = 0;
-                newVertices[i * depth + j] = new Vector3(i * quadSize, (float)heights[i, j], j * quadSize);
+                velocities[i * depth + j] = 0;
+                newVertices[i * depth + j] = new Vector3(i * quadSize, (float)heights[i * depth + j], j * quadSize);
             }
         }
 
+        //  initialize texture coordinates
         for (int i = 0; i < newUV.Length; i++)
         {
             newUV[i] = new Vector2(newVertices[i].x, newVertices[i].z);
         }
 
+        //  represent quads by two triangles
         int tri = 0;
         for (int i = 0; i < width - 1; i++)
         {
@@ -65,8 +68,9 @@ public class HeightField : MonoBehaviour
                 tri += 3;
             }
         }
-        Vector3[] normals = new Vector3[newVertices.Length];
 
+        //  compute normals of triangles and set normals at vertices accordingly
+        Vector3[] normals = new Vector3[newVertices.Length];
         for (int i = 0; i < newTriangles.Length; i += 3)
         {
             Vector3 norm;
@@ -83,45 +87,54 @@ public class HeightField : MonoBehaviour
                 normals[newTriangles[i + 1]] = norm;
             }
         }
-
+        Mesh mesh;
+        //  create new mesh
         mesh = new Mesh();
 
         mesh.vertices = newVertices;
         mesh.triangles = newTriangles;
         mesh.normals = normals;
+        mesh.uv = newUV;
+        //mesh.RecalculateNormals();
 
         GetComponent<MeshFilter>().mesh = mesh;
     }
 
     void Update()
     {
+        //  update velocities for all vertices
+        int sqrt = (int)Mathf.Sqrt(width * depth);
         for (int i = 0; i < width; i++)
         {
             for (int j = 0; j < depth; j++)
             {
-                velocities[i, j] += Time.deltaTime * speed * speed * ((heights[Mathf.Max(i - 1, 0), j] + heights[Mathf.Min(width - 1, i + 1), j] + heights[i, Mathf.Max(j - 1, 0)] + heights[i, Mathf.Min(depth - 1, j + 1)]) - 4 * heights[i, j]) / (size * size);
+                velocities[i * depth + j] += Time.deltaTime * speed * speed * ((heights[Mathf.Max(i - 1, 0) * depth + j] + heights[Mathf.Min(width - 1, i + 1) * depth + j]
+                    + heights[i * depth + Mathf.Max(j - 1, 0)] + heights[i * depth + Mathf.Min(depth - 1, j + 1)]) - 4 * heights[i * depth + j]);
+                    // (size * size);
 
-                if (Random.Range(0, (int)Mathf.Sqrt(width * depth)) == 0)
+                if (Random.Range(0, sqrt) == 0)
                 {
-                    velocities[i, j] += Random.Range(-randVel, randVel);
+                    velocities[i * depth + j] += Random.Range(-randVelocity, randVelocity);
                 }
+                velocities[i * depth + j] = Mathf.Clamp((float)velocities[i * depth + j], -maxVelocity, maxVelocity);
+                velocities[i * depth + j] *= dampingVelocity;
             }
         }
+
+        //  update positions 
         for (int i = 0; i < width; i++)
         {
             for (int j = 0; j < depth; j++)
             {
-                heights[i, j] += velocities[i, j] * Time.deltaTime;
-                heights[i, j] = Mathf.Clamp((float)heights[i, j], -maxHeight, maxHeight);
+                heights[i * depth + j] += velocities[i * depth + j] * Time.deltaTime;
+                heights[i * depth + j] = Mathf.Clamp((float)heights[i * depth + j], -maxHeight, maxHeight);
 
-                newVertices[i * depth + j] = new Vector3(i * quadSize, (float)heights[i, j], j * quadSize);
+                newVertices[i * depth + j] = new Vector3(newVertices[i * depth + j].x, (float)heights[i * depth + j], newVertices[i * depth + j].z);
             }
         }
 
-        mesh.vertices = newVertices;
-
+        //  recalculate normals
         Vector3[] normals = new Vector3[newVertices.Length];
-
         for (int i = 0; i < newTriangles.Length; i += 3)
         {
             Vector3 norm;
@@ -138,12 +151,23 @@ public class HeightField : MonoBehaviour
                 normals[newTriangles[i + 1]] = norm;
             }
         }
+        Mesh mesh = GetComponent<MeshFilter>().mesh;
+        //  set mesh again
         mesh.Clear();
 
         mesh.vertices = newVertices;
         mesh.triangles = newTriangles;
         mesh.normals = normals;
+        //mesh.RecalculateNormals();
 
         GetComponent<MeshFilter>().mesh = mesh;
+    }
+
+    public void StartWave()
+    {
+        for (int i = 0; i < width; i++)
+        {
+            heights[i * depth] = maxHeight;
+        }
     }
 }
