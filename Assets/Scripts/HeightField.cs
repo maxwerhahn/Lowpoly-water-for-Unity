@@ -138,7 +138,7 @@ public class HeightField : MonoBehaviour
             {
                 velocities[i * depth + j] = 0;
                 if (i != 0 && j != 0 && i != width - 1 && j != depth - 1)
-                    newVertices[i * depth + j] = new Vector3(i * quadSize + Random.Range(-quadSize / 3f, quadSize / 3f), heights[i * depth + j], j * quadSize + Random.Range(-quadSize / 3f, quadSize / 3f));
+                    newVertices[i * depth + j] = new Vector3(i * quadSize + Random.Range(-quadSize / 5f, quadSize / 5f), heights[i * depth + j], j * quadSize + Random.Range(-quadSize / 5f, quadSize / 5f));
                 else
                     newVertices[i * depth + j] = new Vector3(i * quadSize, heights[i * depth + j], j * quadSize);
             }
@@ -284,7 +284,8 @@ public class HeightField : MonoBehaviour
     {
         for (int i = 0; i < width; i++)
         {
-            heights[i * depth] = maxHeight;
+            heights[i * depth] += maxHeight;
+            heights[i * depth + depth - 1] -= maxHeight;
         }
     }
 }
