@@ -1,5 +1,5 @@
 # Lowpoly-water-for-Unity
 
-TOCOME: 
-  adjusting shader
+TOCOME: \n
+  adjusting shader\n
   GPU support
