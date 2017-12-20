@@ -17,8 +17,8 @@ public class HeightField : MonoBehaviour
     public float randVelocity;              ///  apply random velocity to randomly chosen vertices
     public float dampingVelocity;           ///  damping factor for velocities
 
-    private double[] heights;               ///  store height values
-    private double[] velocities;            ///  store velocities
+    private float[] heights;               ///  store height values
+    private float[] velocities;            ///  store velocities
 
     private Vector3[] newVertices;          ///  store vertices of mesh
     private int[] newTriangles;             ///  store triangles of mesh
@@ -27,12 +27,12 @@ public class HeightField : MonoBehaviour
     {
         //size = 1.2f;
         dampingVelocity = 1f;
-        heights = new double[width * depth];
-        velocities = new double[width * depth];
+        heights = new float[width * depth];
+        velocities = new float[width * depth];
         newVertices = new Vector3[width * depth];
         newTriangles = new int[(width - 1) * (depth - 1) * 6];
 
-        CreateMesh();
+        CreateMesh2();
     }
 
     void CreateMesh()
@@ -51,7 +51,7 @@ public class HeightField : MonoBehaviour
                 velocities[i * depth + j] = 0;
                 //if (i == 0)
                 //   heights[i * depth + j] += 10.0;
-                newVertices[i * depth + j] = new Vector3(i * quadSize, (float)heights[i * depth + j], j * quadSize);
+                newVertices[i * depth + j] = new Vector3(i * quadSize, heights[i * depth + j], j * quadSize);
             }
         }
 
@@ -114,14 +114,26 @@ public class HeightField : MonoBehaviour
     {
         Vector2[] newUV;
         newUV = new Vector2[newVertices.Length];
+
+        heights[(int)(depth / 2f * depth + width / 2f)] = maxHeight;
+        heights[(int)((depth / 2f + 1) * depth + width / 2f + 1)] = maxHeight;
+        heights[(int)((depth / 2f + 1) * depth + width / 2f)] = maxHeight;
+        heights[(int)(depth / 2f * depth + width / 2f + 1)] = maxHeight;
+        heights[(int)((depth / 2f + 1) * depth + width / 2f - 1)] = maxHeight;
+        heights[(int)((depth / 2f - 1) * depth + width / 2f + 1)] = maxHeight;
+        heights[(int)((depth / 2f - 1) * depth + width / 2f - 1)] = maxHeight;
+        heights[(int)((depth / 2f - 1) * depth + width / 2f)] = maxHeight;
+        heights[(int)(depth / 2f * depth + width / 2f - 1)] = maxHeight;
+
         for (int i = 0; i < width; i++)
         {
             for (int j = 0; j < depth; j++)
             {
                 velocities[i * depth + j] = 0;
-                newVertices[i * depth + j] = new Vector3(i * quadSize, (float)heights[i * depth + j], j * quadSize);
-                if (j % 2 == 0)
-                    newVertices[i * depth + j] = new Vector3(i * quadSize, (float)heights[i * depth + j], quadSize / 2f + j * quadSize);
+                if (i != 0 && j != 0 && i != width - 1 && j != depth - 1)
+                    newVertices[i * depth + j] = new Vector3(i * quadSize + Random.Range(-quadSize / 3f, quadSize / 3f), heights[i * depth + j], j * quadSize + Random.Range(-quadSize / 3f, quadSize / 3f));
+                else
+                    newVertices[i * depth + j] = new Vector3(i * quadSize, heights[i * depth + j], j * quadSize);
             }
         }
         //  initialize texture coordinates
@@ -195,7 +207,7 @@ public class HeightField : MonoBehaviour
                 {
                     velocities[i * depth + j] += Random.Range(-randVelocity, randVelocity);
                 }
-                velocities[i * depth + j] = Mathf.Clamp((float)velocities[i * depth + j], -maxVelocity, maxVelocity);
+                velocities[i * depth + j] = Mathf.Clamp(velocities[i * depth + j], -maxVelocity, maxVelocity);
                 velocities[i * depth + j] *= dampingVelocity;
             }
         }
@@ -206,9 +218,28 @@ public class HeightField : MonoBehaviour
             for (int j = 0; j < depth; j++)
             {
                 heights[i * depth + j] += velocities[i * depth + j] * Time.deltaTime;
-                heights[i * depth + j] = Mathf.Clamp((float)heights[i * depth + j], -maxHeight, maxHeight);
+                heights[i * depth + j] = Mathf.Clamp(heights[i * depth + j], -maxHeight, maxHeight);
+                if (i != 0 && j != 0 && i != width - 1 && j != depth - 1)
+                {
+                    Vector3 pos = newVertices[i * depth + j];
+                    int k, m = 0;
+                    k = (int)(pos.x / quadSize);
+                    m = (int)(pos.z / quadSize);
+                    float x1 = heights[k * depth + m];
+                    float x2 = heights[(k + 1) * depth + m + 1];
+                    float x3 = heights[k * depth + m + 1];
+                    float x4 = heights[(k + 1) * depth + m];
+                    float x = (pos.x / quadSize - k);
+                    float y = (pos.z / quadSize - m);
+                    float res = (x1 * x + x4 * (1 - x)) * y + (x3 * x + x2 * (1 - x)) * (1 - y);
+                    newVertices[i * depth + j] = new Vector3(pos.x, res, pos.z);
+                }
+                else
+                {
+                    Vector3 pos = newVertices[i * depth + j];
 
-                newVertices[i * depth + j] = new Vector3(newVertices[i * depth + j].x, (float)heights[i * depth + j], newVertices[i * depth + j].z);
+                    newVertices[i * depth + j] = new Vector3(pos.x, heights[i * depth + j], pos.z);
+                }
             }
         }
 
@@ -237,7 +268,7 @@ public class HeightField : MonoBehaviour
         mesh.vertices = newVertices;
         mesh.triangles = newTriangles;
         mesh.normals = normals;
-        //mesh.RecalculateNormals();
+        mesh.RecalculateNormals();
 
         GetComponent<MeshFilter>().mesh = mesh;
     }

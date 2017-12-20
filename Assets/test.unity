@@ -303,9 +303,9 @@ MonoBehaviour:
   width: 50
   depth: 50
   speed: 2
-  quadSize: 4
+  quadSize: 2
   maxHeight: 15
-  maxVelocity: 10
+  maxVelocity: 5
   randVelocity: 0.15
   dampingVelocity: 1
 --- !u!4 &882867328
