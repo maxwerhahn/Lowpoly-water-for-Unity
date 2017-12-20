@@ -39,11 +39,18 @@ public class HeightField : MonoBehaviour
     {
         Vector2[] newUV;
         newUV = new Vector2[newVertices.Length];
+
         //  initialize vertices positions
-        heights[(int)(depth / 2f * depth + width / 2f)] = maxHeight;
-        heights[(int)((depth / 2f + 1) * depth + width / 2f + 1)] = maxHeight;
-        heights[(int)((depth / 2f + 1) * depth + width / 2f)] = maxHeight;
-        heights[(int)(depth / 2f * depth + width / 2f + 1)] = maxHeight;
+        heights[(int)(width / 2f * depth + depth / 2f)] = maxHeight;
+        heights[(int)((width / 2f + 1) * depth + depth / 2f + 1)] = maxHeight;
+        heights[(int)((width / 2f + 1) * depth + depth / 2f)] = maxHeight;
+        heights[(int)(width / 2f * depth + depth / 2f + 1)] = maxHeight;
+        heights[(int)((width / 2f + 1) * depth + depth / 2f - 1)] = maxHeight;
+        heights[(int)((width / 2f - 1) * depth + depth / 2f + 1)] = maxHeight;
+        heights[(int)((width / 2f - 1) * depth + depth / 2f - 1)] = maxHeight;
+        heights[(int)((width / 2f - 1) * depth + depth / 2f)] = maxHeight;
+        heights[(int)(width / 2f * depth + depth / 2f - 1)] = maxHeight;
+
         for (int i = 0; i < width; i++)
         {
             for (int j = 0; j < depth; j++)
@@ -115,15 +122,15 @@ public class HeightField : MonoBehaviour
         Vector2[] newUV;
         newUV = new Vector2[newVertices.Length];
 
-        heights[(int)(depth / 2f * depth + width / 2f)] = maxHeight;
-        heights[(int)((depth / 2f + 1) * depth + width / 2f + 1)] = maxHeight;
-        heights[(int)((depth / 2f + 1) * depth + width / 2f)] = maxHeight;
-        heights[(int)(depth / 2f * depth + width / 2f + 1)] = maxHeight;
-        heights[(int)((depth / 2f + 1) * depth + width / 2f - 1)] = maxHeight;
-        heights[(int)((depth / 2f - 1) * depth + width / 2f + 1)] = maxHeight;
-        heights[(int)((depth / 2f - 1) * depth + width / 2f - 1)] = maxHeight;
-        heights[(int)((depth / 2f - 1) * depth + width / 2f)] = maxHeight;
-        heights[(int)(depth / 2f * depth + width / 2f - 1)] = maxHeight;
+        heights[(int)(width/2f * depth + depth/ 2f)] = maxHeight;
+        heights[(int)((width/2f + 1) * depth + depth/ 2f + 1)] = maxHeight;
+        heights[(int)((width/2f + 1) * depth + depth/ 2f)] = maxHeight;
+        heights[(int)(width/2f * depth + depth/ 2f + 1)] = maxHeight;
+        heights[(int)((width/2f + 1) * depth + depth/ 2f - 1)] = maxHeight;
+        heights[(int)((width/2f - 1) * depth + depth/ 2f + 1)] = maxHeight;
+        heights[(int)((width/2f - 1) * depth + depth/ 2f - 1)] = maxHeight;
+        heights[(int)((width/2f - 1) * depth + depth/ 2f)] = maxHeight;
+        heights[(int)(width/2f * depth + depth/ 2f - 1)] = maxHeight;
 
         for (int i = 0; i < width; i++)
         {
