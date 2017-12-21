@@ -85,13 +85,32 @@ public class HeightField : MonoBehaviour
                 tri += 3;
             }
         }
-        
+
+        //  compute normals of triangles and set normals at vertices accordingly
+        Vector3[] normals = new Vector3[newVertices.Length];
+        for (int i = 0; i < newTriangles.Length; i += 3)
+        {
+            Vector3 norm;
+            if ((i / 3) % 2 == 0)
+            {
+                norm = -Vector3.Cross(newVertices[newTriangles[i + 1]] - newVertices[newTriangles[i]], newVertices[newTriangles[i + 1]] - newVertices[newTriangles[i + 2]]).normalized;
+                normals[newTriangles[i + 1]] = norm;
+                normals[newTriangles[i]] = norm;
+            }
+            else
+            {
+                norm = Vector3.Cross(newVertices[newTriangles[i + 2]] - newVertices[newTriangles[i]], newVertices[newTriangles[i + 2]] - newVertices[newTriangles[i + 1]]).normalized;
+                normals[newTriangles[i + 2]] = norm;
+                normals[newTriangles[i + 1]] = norm;
+            }
+        }
         Mesh mesh;
         //  create new mesh
         mesh = new Mesh();
 
         mesh.vertices = newVertices;
         mesh.triangles = newTriangles;
+        mesh.normals = normals;
         mesh.uv = newUV;
         //mesh.RecalculateNormals();
 
@@ -103,15 +122,15 @@ public class HeightField : MonoBehaviour
         Vector2[] newUV;
         newUV = new Vector2[newVertices.Length];
 
-        heights[(int)(width / 2f * depth + depth / 2f)] = maxHeight;
-        heights[(int)((width / 2f + 1) * depth + depth / 2f + 1)] = maxHeight;
-        heights[(int)((width / 2f + 1) * depth + depth / 2f)] = maxHeight;
-        heights[(int)(width / 2f * depth + depth / 2f + 1)] = maxHeight;
-        heights[(int)((width / 2f + 1) * depth + depth / 2f - 1)] = maxHeight;
-        heights[(int)((width / 2f - 1) * depth + depth / 2f + 1)] = maxHeight;
-        heights[(int)((width / 2f - 1) * depth + depth / 2f - 1)] = maxHeight;
-        heights[(int)((width / 2f - 1) * depth + depth / 2f)] = maxHeight;
-        heights[(int)(width / 2f * depth + depth / 2f - 1)] = maxHeight;
+        heights[(int)(width/2f * depth + depth/ 2f)] = maxHeight;
+        heights[(int)((width/2f + 1) * depth + depth/ 2f + 1)] = maxHeight;
+        heights[(int)((width/2f + 1) * depth + depth/ 2f)] = maxHeight;
+        heights[(int)(width/2f * depth + depth/ 2f + 1)] = maxHeight;
+        heights[(int)((width/2f + 1) * depth + depth/ 2f - 1)] = maxHeight;
+        heights[(int)((width/2f - 1) * depth + depth/ 2f + 1)] = maxHeight;
+        heights[(int)((width/2f - 1) * depth + depth/ 2f - 1)] = maxHeight;
+        heights[(int)((width/2f - 1) * depth + depth/ 2f)] = maxHeight;
+        heights[(int)(width/2f * depth + depth/ 2f - 1)] = maxHeight;
 
         for (int i = 0; i < width; i++)
         {
@@ -119,7 +138,7 @@ public class HeightField : MonoBehaviour
             {
                 velocities[i * depth + j] = 0;
                 if (i != 0 && j != 0 && i != width - 1 && j != depth - 1)
-                    newVertices[i * depth + j] = new Vector3(i * quadSize + Random.Range(-quadSize / 2.1f, quadSize / 2.1f), heights[i * depth + j], j * quadSize + Random.Range(-quadSize / 2.1f, quadSize / 2.1f));
+                    newVertices[i * depth + j] = new Vector3(i * quadSize + Random.Range(-quadSize / 5f, quadSize / 5f), heights[i * depth + j], j * quadSize + Random.Range(-quadSize / 5f, quadSize / 5f));
                 else
                     newVertices[i * depth + j] = new Vector3(i * quadSize, heights[i * depth + j], j * quadSize);
             }
@@ -147,13 +166,32 @@ public class HeightField : MonoBehaviour
                 tri += 3;
             }
         }
-        
+
+        //  compute normals of triangles and set normals at vertices accordingly
+        Vector3[] normals = new Vector3[newVertices.Length];
+        for (int i = 0; i < newTriangles.Length; i += 3)
+        {
+            Vector3 norm;
+            if ((i / 3) % 2 == 0)
+            {
+                norm = -Vector3.Cross(newVertices[newTriangles[i + 1]] - newVertices[newTriangles[i]], newVertices[newTriangles[i + 1]] - newVertices[newTriangles[i + 2]]).normalized;
+                normals[newTriangles[i + 1]] = norm;
+                normals[newTriangles[i]] = norm;
+            }
+            else
+            {
+                norm = Vector3.Cross(newVertices[newTriangles[i + 2]] - newVertices[newTriangles[i]], newVertices[newTriangles[i + 2]] - newVertices[newTriangles[i + 1]]).normalized;
+                normals[newTriangles[i + 2]] = norm;
+                normals[newTriangles[i + 1]] = norm;
+            }
+        }
         Mesh mesh;
         //  create new mesh
         mesh = new Mesh();
 
         mesh.vertices = newVertices;
         mesh.triangles = newTriangles;
+        mesh.normals = normals;
         mesh.uv = newUV;
         mesh.RecalculateNormals();
 
@@ -211,13 +249,32 @@ public class HeightField : MonoBehaviour
                 }
             }
         }
-        
+
+        //  recalculate normals
+        Vector3[] normals = new Vector3[newVertices.Length];
+        for (int i = 0; i < newTriangles.Length; i += 3)
+        {
+            Vector3 norm;
+            if ((i / 3) % 2 == 0)
+            {
+                norm = -Vector3.Cross(newVertices[newTriangles[i + 1]] - newVertices[newTriangles[i]], newVertices[newTriangles[i + 1]] - newVertices[newTriangles[i + 2]]).normalized;
+                normals[newTriangles[i + 1]] = norm;
+                normals[newTriangles[i]] = norm;
+            }
+            else
+            {
+                norm = Vector3.Cross(newVertices[newTriangles[i + 2]] - newVertices[newTriangles[i]], newVertices[newTriangles[i + 2]] - newVertices[newTriangles[i + 1]]).normalized;
+                normals[newTriangles[i + 2]] = norm;
+                normals[newTriangles[i + 1]] = norm;
+            }
+        }
         Mesh mesh = GetComponent<MeshFilter>().mesh;
         //  set mesh again
         mesh.Clear();
 
         mesh.vertices = newVertices;
         mesh.triangles = newTriangles;
+        mesh.normals = normals;
         mesh.RecalculateNormals();
 
         GetComponent<MeshFilter>().mesh = mesh;
@@ -227,7 +284,8 @@ public class HeightField : MonoBehaviour
     {
         for (int i = 0; i < width; i++)
         {
-            heights[i * depth] = maxHeight;
+            heights[i * depth] += maxHeight;
+            heights[i * depth + depth - 1] -= maxHeight;
         }
     }
 }
