@@ -14,7 +14,7 @@ public class HeightField : MonoBehaviour
     public float quadSize;                  ///  size of one quad
     public float maxHeight;                 ///  maximum height in height field
     public float maxVelocity;               ///  maximum velocity of vertices
-    public float randVelocity;              ///  apply random velocity to randomly chosen vertices
+    public float randomVelocity;              ///  apply random velocity to randomly chosen vertices
     public float dampingVelocity;           ///  damping factor for velocities
 
     private float[] heights;               ///  store height values
@@ -32,12 +32,13 @@ public class HeightField : MonoBehaviour
         newVertices = new Vector3[width * depth];
         newTriangles = new int[(width - 1) * (depth - 1) * 6];
 
-        CreateMesh2();
+        CreateMesh();
     }
 
     void CreateMesh()
     {
         Vector2[] newUV;
+        newVertices = new Vector3[newTriangles.Length];
         newUV = new Vector2[newVertices.Length];
 
         //  initialize vertices positions
@@ -56,16 +57,13 @@ public class HeightField : MonoBehaviour
             for (int j = 0; j < depth; j++)
             {
                 velocities[i * depth + j] = 0;
-                //if (i == 0)
-                //   heights[i * depth + j] += 10.0;
-                newVertices[i * depth + j] = new Vector3(i * quadSize, heights[i * depth + j], j * quadSize);
             }
         }
 
-        //  initialize texture coordinates
-        for (int i = 0; i < newUV.Length; i++)
+        Vector2[] randomDisplacement = new Vector2[width * depth];
+        for (int i = 0; i < randomDisplacement.Length; i++)
         {
-            newUV[i] = new Vector2(newVertices[i].x, newVertices[i].z);
+            randomDisplacement[i] = new Vector2(Random.Range(-quadSize / 3f, quadSize / 3f), Random.Range(-quadSize / 3f, quadSize / 3f));
         }
 
         //  represent quads by two triangles
@@ -74,47 +72,59 @@ public class HeightField : MonoBehaviour
         {
             for (int j = 0; j < depth - 1; j++)
             {
-                newTriangles[tri + 2] = (i + 1) * depth + (j + 1);
-                newTriangles[tri + 1] = i * depth + (j + 1);
-                newTriangles[tri] = i * depth + j;
-                tri += 3;
-
-                newTriangles[tri + 2] = (i + 1) * depth + j;
-                newTriangles[tri + 1] = (i + 1) * depth + (j + 1);
-                newTriangles[tri] = i * depth + j;
-                tri += 3;
+                for (int u = 0; u < 6; u++)
+                {
+                    Vector3 pos = newVertices[tri + u];
+                    switch (u)
+                    {
+                        case 0:
+                            pos.x = (i) * quadSize + randomDisplacement[(i) * depth + (j)].x;
+                            pos.z = (j) * quadSize + randomDisplacement[(i) * depth + (j)].y;
+                            break;
+                        case 1:
+                            pos.x = (i) * quadSize + randomDisplacement[(i) * depth + (j + 1)].x;
+                            pos.z = (j + 1) * quadSize + randomDisplacement[(i) * depth + (j + 1)].y;
+                            break;
+                        case 2:
+                            pos.x = (i + 1) * quadSize + randomDisplacement[(i + 1) * depth + (j + 1)].x;
+                            pos.z = (j + 1) * quadSize + randomDisplacement[(i + 1) * depth + (j + 1)].y;
+                            break;
+                        case 3:
+                            pos.x = (i) * quadSize + randomDisplacement[(i) * depth + (j)].x;
+                            pos.z = (j) * quadSize + randomDisplacement[(i) * depth + (j)].y;
+                            break;
+                        case 4:
+                            pos.x = (i + 1) * quadSize + randomDisplacement[(i + 1) * depth + (j + 1)].x;
+                            pos.z = (j + 1) * quadSize + randomDisplacement[(i + 1) * depth + (j + 1)].y;
+                            break;
+                        case 5:
+                            pos.x = (i + 1) * quadSize + randomDisplacement[(i + 1) * depth + (j)].x;
+                            pos.z = (j) * quadSize + randomDisplacement[(i + 1) * depth + (j)].y;
+                            break;
+                    }
+                    newVertices[tri + u] = new Vector3(pos.x, 0, pos.z);
+                    newTriangles[tri + u] = tri + u;
+                }
+                tri += 6;
             }
         }
 
-        //  compute normals of triangles and set normals at vertices accordingly
-        Vector3[] normals = new Vector3[newVertices.Length];
-        for (int i = 0; i < newTriangles.Length; i += 3)
+        for (int i = 0; i < newUV.Length; i++)
         {
-            Vector3 norm;
-            if ((i / 3) % 2 == 0)
-            {
-                norm = -Vector3.Cross(newVertices[newTriangles[i + 1]] - newVertices[newTriangles[i]], newVertices[newTriangles[i + 1]] - newVertices[newTriangles[i + 2]]).normalized;
-                normals[newTriangles[i + 1]] = norm;
-                normals[newTriangles[i]] = norm;
-            }
-            else
-            {
-                norm = Vector3.Cross(newVertices[newTriangles[i + 2]] - newVertices[newTriangles[i]], newVertices[newTriangles[i + 2]] - newVertices[newTriangles[i + 1]]).normalized;
-                normals[newTriangles[i + 2]] = norm;
-                normals[newTriangles[i + 1]] = norm;
-            }
+            newUV[i] = new Vector2(newVertices[i].x, newVertices[i].z);
         }
+
         Mesh mesh;
         //  create new mesh
         mesh = new Mesh();
 
         mesh.vertices = newVertices;
         mesh.triangles = newTriangles;
-        mesh.normals = normals;
         mesh.uv = newUV;
-        //mesh.RecalculateNormals();
+        mesh.RecalculateNormals();
 
         GetComponent<MeshFilter>().mesh = mesh;
+        GetComponent<MeshCollider>().sharedMesh = mesh;
     }
 
     void CreateMesh2()
@@ -122,15 +132,15 @@ public class HeightField : MonoBehaviour
         Vector2[] newUV;
         newUV = new Vector2[newVertices.Length];
 
-        heights[(int)(width/2f * depth + depth/ 2f)] = maxHeight;
-        heights[(int)((width/2f + 1) * depth + depth/ 2f + 1)] = maxHeight;
-        heights[(int)((width/2f + 1) * depth + depth/ 2f)] = maxHeight;
-        heights[(int)(width/2f * depth + depth/ 2f + 1)] = maxHeight;
-        heights[(int)((width/2f + 1) * depth + depth/ 2f - 1)] = maxHeight;
-        heights[(int)((width/2f - 1) * depth + depth/ 2f + 1)] = maxHeight;
-        heights[(int)((width/2f - 1) * depth + depth/ 2f - 1)] = maxHeight;
-        heights[(int)((width/2f - 1) * depth + depth/ 2f)] = maxHeight;
-        heights[(int)(width/2f * depth + depth/ 2f - 1)] = maxHeight;
+        heights[(int)(width / 2f * depth + depth / 2f)] = maxHeight;
+        heights[(int)((width / 2f + 1) * depth + depth / 2f + 1)] = maxHeight;
+        heights[(int)((width / 2f + 1) * depth + depth / 2f)] = maxHeight;
+        heights[(int)(width / 2f * depth + depth / 2f + 1)] = maxHeight;
+        heights[(int)((width / 2f + 1) * depth + depth / 2f - 1)] = maxHeight;
+        heights[(int)((width / 2f - 1) * depth + depth / 2f + 1)] = maxHeight;
+        heights[(int)((width / 2f - 1) * depth + depth / 2f - 1)] = maxHeight;
+        heights[(int)((width / 2f - 1) * depth + depth / 2f)] = maxHeight;
+        heights[(int)(width / 2f * depth + depth / 2f - 1)] = maxHeight;
 
         for (int i = 0; i < width; i++)
         {
@@ -166,32 +176,12 @@ public class HeightField : MonoBehaviour
                 tri += 3;
             }
         }
-
-        //  compute normals of triangles and set normals at vertices accordingly
-        Vector3[] normals = new Vector3[newVertices.Length];
-        for (int i = 0; i < newTriangles.Length; i += 3)
-        {
-            Vector3 norm;
-            if ((i / 3) % 2 == 0)
-            {
-                norm = -Vector3.Cross(newVertices[newTriangles[i + 1]] - newVertices[newTriangles[i]], newVertices[newTriangles[i + 1]] - newVertices[newTriangles[i + 2]]).normalized;
-                normals[newTriangles[i + 1]] = norm;
-                normals[newTriangles[i]] = norm;
-            }
-            else
-            {
-                norm = Vector3.Cross(newVertices[newTriangles[i + 2]] - newVertices[newTriangles[i]], newVertices[newTriangles[i + 2]] - newVertices[newTriangles[i + 1]]).normalized;
-                normals[newTriangles[i + 2]] = norm;
-                normals[newTriangles[i + 1]] = norm;
-            }
-        }
         Mesh mesh;
         //  create new mesh
         mesh = new Mesh();
 
         mesh.vertices = newVertices;
         mesh.triangles = newTriangles;
-        mesh.normals = normals;
         mesh.uv = newUV;
         mesh.RecalculateNormals();
 
@@ -212,7 +202,7 @@ public class HeightField : MonoBehaviour
 
                 if (Random.Range(0, sqrt) == 0)
                 {
-                    velocities[i * depth + j] += Random.Range(-randVelocity, randVelocity);
+                    velocities[i * depth + j] += Random.Range(-randomVelocity, randomVelocity);
                 }
                 velocities[i * depth + j] = Mathf.Clamp(velocities[i * depth + j], -maxVelocity, maxVelocity);
                 velocities[i * depth + j] *= dampingVelocity;
@@ -226,58 +216,33 @@ public class HeightField : MonoBehaviour
             {
                 heights[i * depth + j] += velocities[i * depth + j] * Time.deltaTime;
                 heights[i * depth + j] = Mathf.Clamp(heights[i * depth + j], -maxHeight, maxHeight);
-                if (i != 0 && j != 0 && i != width - 1 && j != depth - 1)
-                {
-                    Vector3 pos = newVertices[i * depth + j];
-                    int k, m = 0;
-                    k = (int)(pos.x / quadSize);
-                    m = (int)(pos.z / quadSize);
-                    float x1 = heights[k * depth + m];
-                    float x2 = heights[(k + 1) * depth + m + 1];
-                    float x3 = heights[k * depth + m + 1];
-                    float x4 = heights[(k + 1) * depth + m];
-                    float x = (pos.x / quadSize - k);
-                    float y = (pos.z / quadSize - m);
-                    float res = (x1 * x + x4 * (1 - x)) * y + (x3 * x + x2 * (1 - x)) * (1 - y);
-                    newVertices[i * depth + j] = new Vector3(pos.x, res, pos.z);
-                }
-                else
-                {
-                    Vector3 pos = newVertices[i * depth + j];
-
-                    newVertices[i * depth + j] = new Vector3(pos.x, heights[i * depth + j], pos.z);
-                }
             }
         }
 
-        //  recalculate normals
-        Vector3[] normals = new Vector3[newVertices.Length];
-        for (int i = 0; i < newTriangles.Length; i += 3)
+        //  interpolate heights for vertices
+        for (int i = 0; i < newVertices.Length; i++)
         {
-            Vector3 norm;
-            if ((i / 3) % 2 == 0)
-            {
-                norm = -Vector3.Cross(newVertices[newTriangles[i + 1]] - newVertices[newTriangles[i]], newVertices[newTriangles[i + 1]] - newVertices[newTriangles[i + 2]]).normalized;
-                normals[newTriangles[i + 1]] = norm;
-                normals[newTriangles[i]] = norm;
-            }
-            else
-            {
-                norm = Vector3.Cross(newVertices[newTriangles[i + 2]] - newVertices[newTriangles[i]], newVertices[newTriangles[i + 2]] - newVertices[newTriangles[i + 1]]).normalized;
-                normals[newTriangles[i + 2]] = norm;
-                normals[newTriangles[i + 1]] = norm;
-            }
+            Vector3 pos = newVertices[i];
+            int k, m = 0;
+            k = (int)(pos.x / quadSize);
+            m = (int)(pos.z / quadSize);
+            float x1 = heights[k * depth + m];
+            float x2 = heights[Mathf.Min((k + 1), width - 1) * depth + Mathf.Min(m + 1, depth - 1)];
+            float x3 = heights[k * depth + Mathf.Min(m + 1, depth - 1)];
+            float x4 = heights[Mathf.Min((k + 1), width - 1) * depth + m];
+            float x = (pos.x / quadSize - k);
+            float y = (pos.z / quadSize - m);
+            float res = (x1 * x + x4 * (1 - x)) * y + (x3 * x + x2 * (1 - x)) * (1 - y);
+            newVertices[i] = new Vector3(pos.x, res, pos.z);
         }
-        Mesh mesh = GetComponent<MeshFilter>().mesh;
-        //  set mesh again
-        mesh.Clear();
 
+        Mesh mesh = GetComponent<MeshFilter>().mesh;
+        
         mesh.vertices = newVertices;
-        mesh.triangles = newTriangles;
-        mesh.normals = normals;
         mesh.RecalculateNormals();
 
         GetComponent<MeshFilter>().mesh = mesh;
+        GetComponent<MeshCollider>().sharedMesh = mesh;
     }
 
     public void StartWave()

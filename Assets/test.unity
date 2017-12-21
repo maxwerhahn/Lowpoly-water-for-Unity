@@ -275,6 +275,7 @@ GameObject:
   - component: {fileID: 882867327}
   - component: {fileID: 882867326}
   - component: {fileID: 882867329}
+  - component: {fileID: 882867330}
   m_Layer: 0
   m_Name: HeightField
   m_TagString: Untagged
@@ -305,8 +306,8 @@ MonoBehaviour:
   speed: 2
   quadSize: 2
   maxHeight: 15
-  maxVelocity: 5
-  randVelocity: 0.15
+  maxVelocity: 10
+  randomVelocity: 0.05
   dampingVelocity: 1
 --- !u!4 &882867328
 Transform:
@@ -353,6 +354,20 @@ MeshRenderer:
   m_SortingLayerID: 0
   m_SortingLayer: 0
   m_SortingOrder: 0
+--- !u!64 &882867330
+MeshCollider:
+  m_ObjectHideFlags: 0
+  m_PrefabParentObject: {fileID: 0}
+  m_PrefabInternal: {fileID: 0}
+  m_GameObject: {fileID: 882867325}
+  m_Material: {fileID: 0}
+  m_IsTrigger: 0
+  m_Enabled: 0
+  serializedVersion: 2
+  m_Convex: 0
+  m_InflateMesh: 0
+  m_SkinWidth: 0.01
+  m_Mesh: {fileID: 0}
 --- !u!1 &930167877
 GameObject:
   m_ObjectHideFlags: 0

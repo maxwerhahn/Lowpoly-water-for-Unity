@@ -8,7 +8,7 @@ Material:
   m_PrefabInternal: {fileID: 0}
   m_Name: mesh
   m_Shader: {fileID: 45, guid: 0000000000000000f000000000000000, type: 0}
-  m_ShaderKeywords: _ALPHAPREMULTIPLY_ON
+  m_ShaderKeywords: _ALPHAPREMULTIPLY_ON _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
@@ -92,15 +92,15 @@ Material:
     - _BumpScale: 1
     - _Cutoff: 0.5
     - _DetailNormalMapScale: 1
-    - _DistortionPower: 4
+    - _DistortionPower: 0
     - _DstBlend: 10
     - _EnableExternalAlpha: 0
-    - _FresnelScale: 1.36
+    - _FresnelScale: 4
     - _GerstnerIntensity: 1
-    - _GlossMapScale: 0.855
-    - _Glossiness: 0.8
+    - _GlossMapScale: 0.729
+    - _Glossiness: 0.735
     - _GlossyReflections: 1
-    - _MaxTreshold: 0.5
+    - _MaxTreshold: 0
     - _Metallic: 0
     - _Mode: 3
     - _OcclusionStrength: 1
@@ -108,7 +108,7 @@ Material:
     - _ReflDistort: 0.44
     - _RefrDistort: 0.4
     - _Shininess: 2
-    - _SmoothnessTextureChannel: 0
+    - _SmoothnessTextureChannel: 1
     - _SpecularHighlights: 1
     - _SrcBlend: 1
     - _TargetValue: 0
@@ -118,32 +118,32 @@ Material:
     - _TresholdFalloff: 1.2
     - _UVSec: 0
     - _WaveScale: 0.063
-    - _WavesDensity: 10
+    - _WavesDensity: 0
     - _ZWrite: 0
     m_Colors:
     - WaveSpeed: {r: 19, g: 9, b: -16, a: -7}
-    - _AnimationDirection: {r: 1, g: 1, b: 1, a: 1}
-    - _AnimationTiling: {r: 2.2, g: 2.2, b: -1.1, a: -1.1}
-    - _BaseColor: {r: 0.2603266, g: 0.7399704, b: 0.78676474, a: 1}
-    - _BumpDirection: {r: 1, g: 1, b: -1, a: 1}
-    - _BumpTiling: {r: 1, g: 1, b: -2, a: 3}
-    - _Color: {r: 0.014705896, g: 0.71460444, b: 1, a: 0.7058824}
-    - _DistortParams: {r: 1, g: 1, b: 2, a: 1.15}
+    - _AnimationDirection: {r: 0, g: 0, b: 0, a: 0}
+    - _AnimationTiling: {r: 0, g: 0, b: 0, a: 0}
+    - _BaseColor: {r: 0, g: 0.91111135, b: 1, a: 1}
+    - _BumpDirection: {r: 0, g: 0, b: 0, a: 0}
+    - _BumpTiling: {r: 0, g: 0, b: 0, a: 0}
+    - _Color: {r: 0.014705896, g: 1, b: 0.8776877, a: 0.547}
+    - _DistortParams: {r: 0, g: 0, b: 0, a: 0}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _Flip: {r: 1, g: 1, b: 1, a: 1}
-    - _GAmplitude: {r: 0.3, g: 0.35, b: 0.25, a: 0.25}
-    - _GDirectionAB: {r: 0.3, g: 0.85, b: 0.85, a: 0.25}
-    - _GDirectionCD: {r: 0.1, g: 0.9, b: 0.5, a: 0.5}
-    - _GFrequency: {r: 1.3, g: 1.35, b: 1.25, a: 1.25}
-    - _GSpeed: {r: 1.2, g: 1.375, b: 1.1, a: 1.5}
-    - _GSteepness: {r: 1, g: 1, b: 1, a: 1}
+    - _GAmplitude: {r: 0, g: 0, b: 0, a: 0}
+    - _GDirectionAB: {r: 0, g: 0, b: 0, a: 0}
+    - _GDirectionCD: {r: 0, g: 0, b: 0, a: 0}
+    - _GFrequency: {r: 0, g: 0, b: 0, a: 0}
+    - _GSpeed: {r: 0, g: 0, b: 0, a: 0}
+    - _GSteepness: {r: 0, g: 0, b: 0, a: 0}
     - _HorizonColor: {r: 0.172, g: 0.463, b: 0.435, a: 1}
-    - _InvFadeParemeter: {r: 0.15, g: 0.15, b: 0.5, a: 1}
+    - _InvFadeParemeter: {r: 0, g: 0, b: 0, a: 0}
     - _ReflectColor: {r: 0, g: 0, b: 0, a: 0.5}
-    - _ReflectionColor: {r: 0.59407437, g: 0.9505191, b: 0.9852941, a: 0.5}
+    - _ReflectionColor: {r: 0.3806228, g: 0.7707614, b: 0.8088235, a: 1}
     - _RefrColor: {r: 0.34, g: 0.85, b: 0.92, a: 1}
     - _RendererColor: {r: 1, g: 1, b: 1, a: 1}
-    - _SpecColor: {r: 0.17647058, g: 0.17647058, b: 0.17647058, a: 1}
+    - _SpecColor: {r: 0.102941155, g: 0.102941155, b: 0.102941155, a: 1}
     - _SpecularColor: {r: 0, g: 0, b: 0, a: 1}
-    - _WavesColor: {r: 0.3, g: 0.35, b: 0.25, a: 0.25}
-    - _WorldLightDir: {r: 0, g: 0.1, b: -0.5, a: 0}
+    - _WavesColor: {r: 0, g: 0, b: 0, a: 0.25}
+    - _WorldLightDir: {r: 0, g: 0, b: 0, a: 0}
