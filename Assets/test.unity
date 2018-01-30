@@ -301,14 +301,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 89115b0bda3cb7c4c868dc9170200cb7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  width: 50
-  depth: 50
+  width: 128
+  depth: 64
   speed: 2
   quadSize: 2
   maxHeight: 15
   maxVelocity: 10
   randomVelocity: 0.05
   dampingVelocity: 1
+  heightFieldCS: {fileID: 7200000, guid: 4953ade53a221db458950ff31d7297c6, type: 3}
 --- !u!4 &882867328
 Transform:
   m_ObjectHideFlags: 0

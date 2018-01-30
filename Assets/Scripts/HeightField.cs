@@ -23,6 +23,21 @@ public class HeightField : MonoBehaviour
     private Vector3[] newVertices;          ///  store vertices of mesh
     private int[] newTriangles;             ///  store triangles of mesh
 
+    public ComputeShader heightFieldCS;
+    private ComputeBuffer heightFieldCB;
+    private ComputeBuffer heightFieldCBOut;
+    private ComputeBuffer verticesCB;
+   
+    private int kernel;
+    private int kernelVertices;
+
+    struct heightField
+    {
+        public float height;
+        public float velocity;
+    }
+
+    heightField[] hf;
     void Start()
     {
         //size = 1.2f;
@@ -32,7 +47,60 @@ public class HeightField : MonoBehaviour
         newVertices = new Vector3[width * depth];
         newTriangles = new int[(width - 1) * (depth - 1) * 6];
 
+        hf = new heightField[width * depth];
+        heightFieldCB = new ComputeBuffer(width * depth, 8);
+        heightFieldCBOut = new ComputeBuffer(width * depth, 8);
+
+        verticesCB = new ComputeBuffer((width - 1) * (depth - 1) * 6 * 3, 12);
+
+        hf[(int)(width / 2f * depth + depth / 2f)].height = maxHeight;
+        hf[(int)((width / 2f + 1) * depth + depth / 2f + 1)].height = maxHeight;
+        hf[(int)((width / 2f + 1) * depth + depth / 2f)].height = maxHeight;
+        hf[(int)(width / 2f * depth + depth / 2f + 1)].height = maxHeight;
+        hf[(int)((width / 2f + 1) * depth + depth / 2f - 1)].height = maxHeight;
+        hf[(int)((width / 2f - 1) * depth + depth / 2f + 1)].height = maxHeight;
+        hf[(int)((width / 2f - 1) * depth + depth / 2f - 1)].height = maxHeight;
+        hf[(int)((width / 2f - 1) * depth + depth / 2f)].height = maxHeight;
+        hf[(int)(width / 2f * depth + depth / 2f - 1)].height = maxHeight;
+
         CreateMesh();
+
+        heightFieldCB.SetData(hf);
+
+        kernel = heightFieldCS.FindKernel("updateHeightfield");
+        kernelVertices = heightFieldCS.FindKernel("interpolateVertices");
+
+        heightFieldCS.SetFloat("g_fQuadSize", quadSize);
+        heightFieldCS.SetInt("g_iDepth", depth);
+        heightFieldCS.SetInt("g_iWidth", width);
+    }
+
+    void updateHeightfield()
+    {
+        heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
+
+        heightFieldCBOut.SetData(hf);
+        heightFieldCS.SetBuffer(kernel, "heightFieldOut", heightFieldCBOut);
+        
+        heightFieldCS.SetFloat("g_fDeltaTime", Time.deltaTime);
+        heightFieldCS.SetFloat("g_fSpeed", speed);
+        heightFieldCS.SetFloat("g_fMaxVelocity", maxVelocity);
+        heightFieldCS.SetFloat("g_fMaxHeight", maxHeight);
+        heightFieldCS.SetFloat("g_fDamping", dampingVelocity);
+        
+        heightFieldCS.Dispatch(kernel, width / 16, depth / 16, 1);
+        heightFieldCBOut.GetData(hf);
+        heightFieldCB.SetData(hf);
+    }
+
+    void updateVertices()
+    {
+        verticesCB.SetData(newVertices);
+        heightFieldCS.SetBuffer(kernelVertices, "heightFieldIn", heightFieldCB);
+        heightFieldCS.SetBuffer(kernelVertices, "verticesPosition", verticesCB);
+
+        heightFieldCS.Dispatch(kernelVertices, newVertices.Length / 256, 1, 1);
+        verticesCB.GetData(newVertices);
     }
 
     void CreateMesh()
@@ -189,52 +257,9 @@ public class HeightField : MonoBehaviour
     }
 
     void Update()
-    {
-        //  update velocities for all vertices
-        int sqrt = (int)Mathf.Sqrt(width * depth);
-        for (int i = 0; i < width; i++)
-        {
-            for (int j = 0; j < depth; j++)
-            {
-                velocities[i * depth + j] += Time.deltaTime * speed * speed * ((heights[Mathf.Max(i - 1, 0) * depth + j] + heights[Mathf.Min(width - 1, i + 1) * depth + j]
-                    + heights[i * depth + Mathf.Max(j - 1, 0)] + heights[i * depth + Mathf.Min(depth - 1, j + 1)]) - 4 * heights[i * depth + j]);
-                // (size * size);
-
-                if (Random.Range(0, sqrt) == 0)
-                {
-                    velocities[i * depth + j] += Random.Range(-randomVelocity, randomVelocity);
-                }
-                velocities[i * depth + j] = Mathf.Clamp(velocities[i * depth + j], -maxVelocity, maxVelocity);
-                velocities[i * depth + j] *= dampingVelocity;
-            }
-        }
-
-        //  update positions 
-        for (int i = 0; i < width; i++)
-        {
-            for (int j = 0; j < depth; j++)
-            {
-                heights[i * depth + j] += velocities[i * depth + j] * Time.deltaTime;
-                heights[i * depth + j] = Mathf.Clamp(heights[i * depth + j], -maxHeight, maxHeight);
-            }
-        }
-
-        //  interpolate heights for vertices
-        for (int i = 0; i < newVertices.Length; i++)
-        {
-            Vector3 pos = newVertices[i];
-            int k, m = 0;
-            k = (int)(pos.x / quadSize);
-            m = (int)(pos.z / quadSize);
-            float x1 = heights[k * depth + m];
-            float x2 = heights[Mathf.Min((k + 1), width - 1) * depth + Mathf.Min(m + 1, depth - 1)];
-            float x3 = heights[k * depth + Mathf.Min(m + 1, depth - 1)];
-            float x4 = heights[Mathf.Min((k + 1), width - 1) * depth + m];
-            float x = (pos.x / quadSize - k);
-            float y = (pos.z / quadSize - m);
-            float res = (x1 * x + x4 * (1 - x)) * y + (x3 * x + x2 * (1 - x)) * (1 - y);
-            newVertices[i] = new Vector3(pos.x, res, pos.z);
-        }
+    {        
+        updateHeightfield();
+        updateVertices();
 
         Mesh mesh = GetComponent<MeshFilter>().mesh;
         
