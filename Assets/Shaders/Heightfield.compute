@@ -12,6 +12,7 @@ float g_fMaxVelocity;
 float g_fDeltaTime;
 float g_fMaxHeight;
 float g_fQuadSize;
+float g_fAvgHeight;
 uint g_iDepth;
 uint g_iWidth;
 
@@ -35,7 +36,7 @@ void updateHeightfield(uint3 id : SV_DispatchThreadID)
 	heightFieldOut[i * g_iDepth+ j].velocity = clamp(heightFieldOut[i * g_iDepth+ j].velocity, -g_fMaxVelocity, g_fMaxVelocity);
 	heightFieldOut[i * g_iDepth+ j].velocity *= g_fDamping;
 
-	heightFieldOut[i * g_iDepth+ j].height = heightFieldIn[i*g_iDepth+ j].height + heightFieldOut[i * g_iDepth+ j].velocity * g_fDeltaTime;
+	heightFieldOut[i * g_iDepth+ j].height = heightFieldIn[i*g_iDepth+ j].height + heightFieldOut[i * g_iDepth+ j].velocity * g_fDeltaTime - g_fAvgHeight;
 	heightFieldOut[i * g_iDepth+ j].height = clamp(heightFieldOut[i * g_iDepth+ j].height, -g_fMaxHeight, g_fMaxHeight);
 }
 [numthreads(256, 1, 1)]

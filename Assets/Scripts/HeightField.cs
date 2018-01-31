@@ -46,23 +46,13 @@ public class HeightField : MonoBehaviour
         velocities = new float[width * depth];
         newVertices = new Vector3[width * depth];
         newTriangles = new int[(width - 1) * (depth - 1) * 6];
-
-        hf = new heightField[width * depth];
+        
         heightFieldCB = new ComputeBuffer(width * depth, 8);
         heightFieldCBOut = new ComputeBuffer(width * depth, 8);
 
         verticesCB = new ComputeBuffer((width - 1) * (depth - 1) * 6 * 3, 12);
 
-        hf[(int)(width / 2f * depth + depth / 2f)].height = maxHeight;
-        hf[(int)((width / 2f + 1) * depth + depth / 2f + 1)].height = maxHeight;
-        hf[(int)((width / 2f + 1) * depth + depth / 2f)].height = maxHeight;
-        hf[(int)(width / 2f * depth + depth / 2f + 1)].height = maxHeight;
-        hf[(int)((width / 2f + 1) * depth + depth / 2f - 1)].height = maxHeight;
-        hf[(int)((width / 2f - 1) * depth + depth / 2f + 1)].height = maxHeight;
-        hf[(int)((width / 2f - 1) * depth + depth / 2f - 1)].height = maxHeight;
-        hf[(int)((width / 2f - 1) * depth + depth / 2f)].height = maxHeight;
-        hf[(int)(width / 2f * depth + depth / 2f - 1)].height = maxHeight;
-
+        initHeightField();
         CreateMesh();
 
         heightFieldCB.SetData(hf);
@@ -75,11 +65,30 @@ public class HeightField : MonoBehaviour
         heightFieldCS.SetInt("g_iWidth", width);
     }
 
-    void updateHeightfield()
+    void initHeightField()
+    {
+        hf = new heightField[width * depth];
+
+        hf[(int)(width / 2f * depth + depth / 2f)].height = maxHeight;
+        hf[(int)((width / 2f + 1) * depth + depth / 2f + 1)].height = maxHeight;
+        hf[(int)((width / 2f + 1) * depth + depth / 2f)].height = maxHeight;
+        hf[(int)(width / 2f * depth + depth / 2f + 1)].height = maxHeight;
+        hf[(int)((width / 2f + 1) * depth + depth / 2f - 1)].height = maxHeight;
+        hf[(int)((width / 2f - 1) * depth + depth / 2f + 1)].height = maxHeight;
+        hf[(int)((width / 2f - 1) * depth + depth / 2f - 1)].height = maxHeight;
+        hf[(int)((width / 2f - 1) * depth + depth / 2f)].height = maxHeight;
+        hf[(int)(width / 2f * depth + depth / 2f - 1)].height = maxHeight;
+        for (int i = 0; i < hf.Length; i++)
+        {
+            hf[i].velocity += Random.Range(-randomVelocity, randomVelocity);
+        }
+    }
+
+    void updateHeightfield(float avg)
     {
         heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
 
-        heightFieldCBOut.SetData(hf);
+        heightFieldCB.SetData(hf);
         heightFieldCS.SetBuffer(kernel, "heightFieldOut", heightFieldCBOut);
         
         heightFieldCS.SetFloat("g_fDeltaTime", Time.deltaTime);
@@ -87,7 +96,8 @@ public class HeightField : MonoBehaviour
         heightFieldCS.SetFloat("g_fMaxVelocity", maxVelocity);
         heightFieldCS.SetFloat("g_fMaxHeight", maxHeight);
         heightFieldCS.SetFloat("g_fDamping", dampingVelocity);
-        
+        heightFieldCS.SetFloat("g_fAvgHeight", avg);
+
         heightFieldCS.Dispatch(kernel, width / 16, depth / 16, 1);
         heightFieldCBOut.GetData(hf);
         heightFieldCB.SetData(hf);
@@ -99,7 +109,7 @@ public class HeightField : MonoBehaviour
         heightFieldCS.SetBuffer(kernelVertices, "heightFieldIn", heightFieldCB);
         heightFieldCS.SetBuffer(kernelVertices, "verticesPosition", verticesCB);
 
-        heightFieldCS.Dispatch(kernelVertices, newVertices.Length / 256, 1, 1);
+        heightFieldCS.Dispatch(kernelVertices, newVertices.Length / 256 + 1, 1, 1);
         verticesCB.GetData(newVertices);
     }
 
@@ -257,10 +267,15 @@ public class HeightField : MonoBehaviour
     }
 
     void Update()
-    {        
-        updateHeightfield();
+    {
+        float avg = 0.0f;
+        for (int i = 0; i < hf.Length; i++)
+        {
+            avg += hf[i].height;
+        }
+        avg /= hf.Length;
+        updateHeightfield(avg);
         updateVertices();
-
         Mesh mesh = GetComponent<MeshFilter>().mesh;
         
         mesh.vertices = newVertices;
