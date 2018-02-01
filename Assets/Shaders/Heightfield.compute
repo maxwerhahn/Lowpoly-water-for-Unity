@@ -26,6 +26,7 @@ RWStructuredBuffer<float3> verticesPosition : register(u1);
 void updateHeightfield(uint3 id : SV_DispatchThreadID)
 {
 	//	https://www.cs.ubc.ca/~rbridson/fluidsimulation/GameFluids2007.pdf
+	//	http://matthias-mueller-fischer.ch/talks/GDC2008.pdf
 
 
 	//	get corresponding indices of current thread
@@ -38,7 +39,7 @@ void updateHeightfield(uint3 id : SV_DispatchThreadID)
 
 	//	wave equation in 2D, semi-implicit euler
 	//	max and min used for clamping the boundary and reflecting the waves
-	//	v[i, j]_(t+1) = v_t + dt * c * c * ((h[i - 1, j] + h[i + 1, j] + h[i, j + 1] + h[i, j - 1])- 4 * h[i, j]_t)		
+	//	v[i, j]_(t+1) = v_t + dt * c * c * ((h[i - 1, j] + h[i + 1, j] + h[i, j + 1] + h[i, j - 1])- 4 * h[i, j]_t)	/ (g_fGridSpacing * g_fGridSpacing)
 
 	heightFieldOut[i * g_iDepth + j].velocity = heightFieldIn[i * g_iDepth + j].velocity + g_fDeltaTime * g_fSpeed * g_fSpeed *
 		((heightFieldIn[max(i - 1, 0) * g_iDepth + j].height + heightFieldIn[min(g_iWidth - 1, i + 1) * g_iDepth + j].height
