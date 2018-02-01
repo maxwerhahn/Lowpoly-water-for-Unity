@@ -46,14 +46,15 @@ public class HeightField : MonoBehaviour
         velocities = new float[width * depth];
         newVertices = new Vector3[width * depth];
         newTriangles = new int[(width - 1) * (depth - 1) * 6];
-        
-        heightFieldCB = new ComputeBuffer(width * depth, 8);
-        heightFieldCBOut = new ComputeBuffer(width * depth, 8);
-
-        verticesCB = new ComputeBuffer((width - 1) * (depth - 1) * 6 * 3, 12);
 
         initHeightField();
         CreateMesh();
+
+        heightFieldCB = new ComputeBuffer(width * depth, 8);
+        heightFieldCBOut = new ComputeBuffer(width * depth, 8);
+
+        verticesCB = new ComputeBuffer(newVertices.Length, 12);
+        
 
         heightFieldCB.SetData(hf);
 
@@ -141,7 +142,7 @@ public class HeightField : MonoBehaviour
         Vector2[] randomDisplacement = new Vector2[width * depth];
         for (int i = 0; i < randomDisplacement.Length; i++)
         {
-            //randomDisplacement[i] = new Vector2(Random.Range(-quadSize / 3f, quadSize / 3f), Random.Range(-quadSize / 3f, quadSize / 3f));
+            randomDisplacement[i] = new Vector2(Random.Range(-quadSize / 3f, quadSize / 3f), Random.Range(-quadSize / 3f, quadSize / 3f));
         }
 
         //  represent quads by two triangles
