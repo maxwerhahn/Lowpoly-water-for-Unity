@@ -302,12 +302,12 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   width: 64
   depth: 128
-  speed: 2
+  speed: 4
   quadSize: 8
-  maxHeight: 25
-  maxVelocity: 10
-  randomVelocity: 0.3
-  dampingVelocity: 1
+  maxHeight: 30
+  maxVelocity: 20
+  randomVelocity: 10
+  dampingVelocity: 0.9999
   heightFieldCS: {fileID: 7200000, guid: 4953ade53a221db458950ff31d7297c6, type: 3}
 --- !u!4 &882867328
 Transform:
