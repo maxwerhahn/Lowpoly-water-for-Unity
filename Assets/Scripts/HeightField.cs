@@ -192,7 +192,6 @@ public class HeightField : MonoBehaviour
         mesh.RecalculateNormals();
 
         GetComponent<MeshFilter>().mesh = mesh;
-        GetComponent<MeshCollider>().sharedMesh = mesh;
     }
 
     //  creates mesh without flat shading
@@ -266,7 +265,6 @@ public class HeightField : MonoBehaviour
         mesh.vertices = newVertices;
         mesh.RecalculateNormals();
         GetComponent<MeshFilter>().mesh = mesh;
-        GetComponent<MeshCollider>().sharedMesh = mesh;
     }
 
     public void StartWave()
