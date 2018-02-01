@@ -17,8 +17,7 @@ public class HeightField : MonoBehaviour
     public float randomVelocity;              ///  apply random velocity to randomly chosen vertices
     public float dampingVelocity;           ///  damping factor for velocities
 
-    private float[] heights;               ///  store height values
-    private float[] velocities;            ///  store velocities
+    public bool smoothedNormals;
 
     private Vector3[] newVertices;          ///  store vertices of mesh
     private int[] newTriangles;             ///  store triangles of mesh
@@ -41,15 +40,16 @@ public class HeightField : MonoBehaviour
     void Start()
     {
         //size = 1.2f;
-        dampingVelocity = 1f;
-        heights = new float[width * depth];
-        velocities = new float[width * depth];
         newVertices = new Vector3[width * depth];
         newTriangles = new int[(width - 1) * (depth - 1) * 6];
 
         initHeightField();
-        //  initialize vertices positions in a rectangle shape
-        CreateMesh();
+        //  initialize vertices positions in a rectangle shapee shape
+        if (smoothedNormals)
+            CreateMesh2();
+        else
+            CreateMesh();
+
 
         //  initialize buffers
         heightFieldCB = new ComputeBuffer(width * depth, 8);
@@ -204,11 +204,10 @@ public class HeightField : MonoBehaviour
         {
             for (int j = 0; j < depth; j++)
             {
-                velocities[i * depth + j] = 0;
                 if (i != 0 && j != 0 && i != width - 1 && j != depth - 1)
-                    newVertices[i * depth + j] = new Vector3(i * quadSize + Random.Range(-quadSize / 5f, quadSize / 5f), heights[i * depth + j], j * quadSize + Random.Range(-quadSize / 5f, quadSize / 5f));
+                    newVertices[i * depth + j] = new Vector3(i * quadSize + Random.Range(-quadSize / 3f, quadSize / 3f), hf[i * depth + j].height, j * quadSize + Random.Range(-quadSize / 3f, quadSize / 3f));
                 else
-                    newVertices[i * depth + j] = new Vector3(i * quadSize, heights[i * depth + j], j * quadSize);
+                    newVertices[i * depth + j] = new Vector3(i * quadSize, hf[i * depth + j].height, j * quadSize);
             }
         }
         //  initialize texture coordinates
