@@ -266,7 +266,6 @@ public class HeightField : MonoBehaviour
         mesh.vertices = newVertices;
         mesh.RecalculateNormals();
         GetComponent<MeshFilter>().mesh = mesh;
-        GetComponent<MeshCollider>().sharedMesh = mesh;
     }
 
     public void StartWave()
