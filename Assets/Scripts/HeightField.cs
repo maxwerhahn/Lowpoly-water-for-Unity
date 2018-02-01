@@ -48,19 +48,21 @@ public class HeightField : MonoBehaviour
         newTriangles = new int[(width - 1) * (depth - 1) * 6];
 
         initHeightField();
+        //  initialize vertices positions in a rectangle shape
         CreateMesh();
 
+        //  initialize buffers
         heightFieldCB = new ComputeBuffer(width * depth, 8);
         heightFieldCBOut = new ComputeBuffer(width * depth, 8);
-
         verticesCB = new ComputeBuffer(newVertices.Length, 12);
         
-
         heightFieldCB.SetData(hf);
 
+        //  get corresponding kernel indices
         kernel = heightFieldCS.FindKernel("updateHeightfield");
         kernelVertices = heightFieldCS.FindKernel("interpolateVertices");
 
+        //  set constants
         heightFieldCS.SetFloat("g_fQuadSize", quadSize);
         heightFieldCS.SetInt("g_iDepth", depth);
         heightFieldCS.SetInt("g_iWidth", width);
@@ -79,12 +81,14 @@ public class HeightField : MonoBehaviour
         hf[(int)((width / 2f - 1) * depth + depth / 2f - 1)].height = maxHeight;
         hf[(int)((width / 2f - 1) * depth + depth / 2f)].height = maxHeight;
         hf[(int)(width / 2f * depth + depth / 2f - 1)].height = maxHeight;
+
         for (int i = 0; i < hf.Length; i++)
         {
             hf[i].velocity += Random.Range(-randomVelocity, randomVelocity);
         }
     }
 
+    //  dispatch of compute shader
     void updateHeightfield(float avg)
     {
         heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
@@ -98,12 +102,14 @@ public class HeightField : MonoBehaviour
         heightFieldCS.SetFloat("g_fMaxHeight", maxHeight);
         heightFieldCS.SetFloat("g_fDamping", dampingVelocity);
         heightFieldCS.SetFloat("g_fAvgHeight", avg);
+        heightFieldCS.SetFloat("g_fGridSpacing", 1); // could be changed to quadSize
 
         heightFieldCS.Dispatch(kernel, width / 16, depth / 16, 1);
         heightFieldCBOut.GetData(hf);
         heightFieldCB.SetData(hf);
     }
 
+    //  dispatch of compute shader
     void updateVertices()
     {
         verticesCB.SetData(newVertices);
@@ -114,31 +120,14 @@ public class HeightField : MonoBehaviour
         verticesCB.GetData(newVertices);
     }
 
+    //  creates mesh with flat shading
     void CreateMesh()
     {
         Vector2[] newUV;
         newVertices = new Vector3[newTriangles.Length];
         newUV = new Vector2[newVertices.Length];
-
-        //  initialize vertices positions
-        heights[(int)(width / 2f * depth + depth / 2f)] = maxHeight;
-        heights[(int)((width / 2f + 1) * depth + depth / 2f + 1)] = maxHeight;
-        heights[(int)((width / 2f + 1) * depth + depth / 2f)] = maxHeight;
-        heights[(int)(width / 2f * depth + depth / 2f + 1)] = maxHeight;
-        heights[(int)((width / 2f + 1) * depth + depth / 2f - 1)] = maxHeight;
-        heights[(int)((width / 2f - 1) * depth + depth / 2f + 1)] = maxHeight;
-        heights[(int)((width / 2f - 1) * depth + depth / 2f - 1)] = maxHeight;
-        heights[(int)((width / 2f - 1) * depth + depth / 2f)] = maxHeight;
-        heights[(int)(width / 2f * depth + depth / 2f - 1)] = maxHeight;
-
-        for (int i = 0; i < width; i++)
-        {
-            for (int j = 0; j < depth; j++)
-            {
-                velocities[i * depth + j] = 0;
-            }
-        }
-
+        
+        //  random displacement in x and z position added to vertices
         Vector2[] randomDisplacement = new Vector2[width * depth];
         for (int i = 0; i < randomDisplacement.Length; i++)
         {
@@ -206,20 +195,11 @@ public class HeightField : MonoBehaviour
         GetComponent<MeshCollider>().sharedMesh = mesh;
     }
 
+    //  creates mesh without flat shading
     void CreateMesh2()
     {
         Vector2[] newUV;
         newUV = new Vector2[newVertices.Length];
-
-        heights[(int)(width / 2f * depth + depth / 2f)] = maxHeight;
-        heights[(int)((width / 2f + 1) * depth + depth / 2f + 1)] = maxHeight;
-        heights[(int)((width / 2f + 1) * depth + depth / 2f)] = maxHeight;
-        heights[(int)(width / 2f * depth + depth / 2f + 1)] = maxHeight;
-        heights[(int)((width / 2f + 1) * depth + depth / 2f - 1)] = maxHeight;
-        heights[(int)((width / 2f - 1) * depth + depth / 2f + 1)] = maxHeight;
-        heights[(int)((width / 2f - 1) * depth + depth / 2f - 1)] = maxHeight;
-        heights[(int)((width / 2f - 1) * depth + depth / 2f)] = maxHeight;
-        heights[(int)(width / 2f * depth + depth / 2f - 1)] = maxHeight;
 
         for (int i = 0; i < width; i++)
         {
@@ -270,28 +250,32 @@ public class HeightField : MonoBehaviour
     void Update()
     {
         float avg = 0.0f;
+        //  calculate average of all points in the heightfield (might be unecessary)
         for (int i = 0; i < hf.Length; i++)
         {
             avg += hf[i].height;
         }
         avg /= hf.Length;
+
+        //  update heightfield and vertices
         updateHeightfield(avg);
         updateVertices();
-        Mesh mesh = GetComponent<MeshFilter>().mesh;
         
+        //  reset mesh with new vertices
+        Mesh mesh = GetComponent<MeshFilter>().mesh;        
         mesh.vertices = newVertices;
         mesh.RecalculateNormals();
-
         GetComponent<MeshFilter>().mesh = mesh;
         GetComponent<MeshCollider>().sharedMesh = mesh;
     }
 
     public void StartWave()
     {
+        //  start wave but keep overall height the same
         for (int i = 0; i < width; i++)
         {
-            heights[i * depth] += maxHeight;
-            heights[i * depth + depth - 1] -= maxHeight;
+            hf[i * depth].height += maxHeight;
+            hf[i * depth + depth - 1].height -= maxHeight;
         }
     }
 }
