@@ -53,6 +53,6 @@ void interpolateVertices(uint3 id : SV_DispatchThreadID)
 	float x4 = heightFieldIn[min((k + 1), g_iWidth - 1) * g_iDepth + m].height;
 	float x = (pos.x / g_fQuadSize - k);
 	float y = (pos.z / g_fQuadSize - m);
-	float res = (x1 * x + x4 * (1 - x)) * y + (x3 * x + x2 * (1 - x)) * (1 - y);
+	float res = (x1 * (1-x) + x4 * (x)) * (1-y) + (x3 * (1-x) + x2 * (x)) * (y);
 	verticesPosition[i].y = res;
 }
