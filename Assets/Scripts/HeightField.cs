@@ -182,6 +182,7 @@ public class HeightField : MonoBehaviour
         updateHeightfield();
 
         Shader.SetGlobalVector("g_SunDir", RenderSettings.sun.transform.forward);
+        Shader.SetGlobalVector("g_SunPos", RenderSettings.sun.transform.position);
         Shader.SetGlobalVector("g_SunColor", RenderSettings.sun.color);
     }
 }

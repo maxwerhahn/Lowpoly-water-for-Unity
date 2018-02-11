@@ -9,6 +9,8 @@ Shader "Custom/HeightFieldRender" {
 	Properties{
 		g_Color("Color", Color) = (1,1,1,1)
 		g_Attenuation("Attenuation", Range(0.0, 1.0)) = 1.0
+		g_Shininess("Shininess", Range(0.0, 2000.0)) = 20.0
+		[Toggle] g_directionalLight("use directional light", Float) = 0
 	}
 		SubShader{
 		Tags { "Queue" = "Transparent" "RenderType" = "Transparent" }
@@ -34,10 +36,13 @@ Shader "Custom/HeightFieldRender" {
 		int g_iDepth;
 		int g_iWidth;
 
+		float g_directionalLight;
 		float g_Attenuation;
+		float g_Shininess;
 		fixed4 g_Color;
 		fixed4 g_SunDir;
 		fixed4 g_SunColor;
+		fixed4 g_SunPos;
 
 		#ifdef SHADER_API_D3D11
 
@@ -80,18 +85,22 @@ Shader "Custom/HeightFieldRender" {
 		float4 lighting(float3 centerPos, float3 normal) {
 			float4x4 modelMatrix = unity_ObjectToWorld;
 			float4x4 modelMatrixInverse = unity_WorldToObject;
+			float3 pos = mul(modelMatrix, float4(centerPos, 1.0f)).xyz;
 
-			float3 normalDirection = normalize(mul(float4(normal, 0.0f), modelMatrixInverse).xyz);
-			float3 viewDirection = normalize(_WorldSpaceCameraPos - mul(modelMatrix, float4(centerPos, 0.0f)).xyz);
-			float3 lightDirection = -normalize(g_SunDir.xyz);
-
+			float3 normalDirection = normalize(mul(float4(normal, 1.0f), modelMatrixInverse).xyz);
+			float3 viewDirection = normalize(_WorldSpaceCameraPos - pos);
+			float3 lightDirection; 
+			if(g_directionalLight > 0.5f)
+				lightDirection = -normalize(g_SunDir.xyz);
+			else
+				lightDirection = normalize(-pos + g_SunPos.xyz);
 			float3 ambientLighting = UNITY_LIGHTMODEL_AMBIENT.rgb * g_Color.rgb;
 
 			float3 diffuseReflection = g_Attenuation * g_Color.rgb * max(0.0, dot(normalDirection, lightDirection));
 
-			float3 specularReflection = g_Attenuation * g_SunColor.rgb * pow(max(0.0, dot(reflect(-lightDirection, normalDirection), viewDirection)), 20.0f);
-			
-			return float4(ambientLighting + specularReflection + diffuseReflection, g_Color.w);
+			float3 specularReflection = g_Attenuation * g_SunColor.rgb * pow(max(0.0, dot(reflect(-lightDirection, normalDirection), viewDirection)), g_Shininess);
+
+			return float4(ambientLighting + specularReflection + diffuseReflection , g_Color.w);
 		}
 
 		float interpolateHeight(float3 pos, float k, float m) {
@@ -164,7 +173,7 @@ Shader "Custom/HeightFieldRender" {
 				tristream.Append(o);
 				tristream.Append(o1);
 				tristream.Append(o2);
-				tristream.RestartStrip(); 
+				tristream.RestartStrip();
 
 				color = lighting((pos + pos1 + pos2) / 3.0f, -n);
 				o.normal = -n;
@@ -215,7 +224,7 @@ Shader "Custom/HeightFieldRender" {
 				tristream.Append(o1);
 				tristream.Append(o2);
 				tristream.RestartStrip();
-			
+
 #endif
 		}
 
