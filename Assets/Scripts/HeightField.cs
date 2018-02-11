@@ -1,7 +1,6 @@
 ﻿using UnityEngine;
 using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
 
 public class HeightField : MonoBehaviour
 {
@@ -13,6 +12,7 @@ public class HeightField : MonoBehaviour
 
     //  public variables
     public ComputeShader heightFieldCS;
+    public Camera mainCam;
 
     public float maxRandomDisplacement;     ///  initial random displacement of vertices
 
@@ -36,6 +36,8 @@ public class HeightField : MonoBehaviour
         
     void Start()
     {
+        mainCam.depthTextureMode = DepthTextureMode.Depth;
+
         initHeightField();
         CreateMesh();
 
