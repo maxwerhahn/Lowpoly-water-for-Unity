@@ -365,16 +365,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   heightFieldCS: {fileID: 7200000, guid: 4953ade53a221db458950ff31d7297c6, type: 3}
   mainCam: {fileID: 1846956667}
-  maxRandomDisplacement: 0.5
-  width: 254
-  depth: 254
-  quadSize: 16
-  speed: 4
+  maxRandomDisplacement: 1
+  width: 128
+  depth: 128
+  quadSize: 32
+  speed: 5
   gridSpacing: 1
   maxHeight: 200
   maxVelocity: 100
   randomInitialVelocity: 5
-  dampingVelocity: 0.9999
+  dampingVelocity: 0.9996
 --- !u!4 &882867328
 Transform:
   m_ObjectHideFlags: 0
@@ -738,7 +738,7 @@ Camera:
     width: 1
     height: 1
   near clip plane: 0.3
-  far clip plane: 10000
+  far clip plane: 5000
   field of view: 60
   orthographic: 0
   orthographic size: 5

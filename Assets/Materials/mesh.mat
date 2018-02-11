@@ -121,7 +121,7 @@ Material:
     - _ZWrite: 0
     - _isBending: 0
     - g_Attenuation: 1
-    - g_DepthVisible: 5000
+    - g_DepthVisible: 711
     - g_Glossiness: 0.5
     - g_Metallic: 0
     - g_Shininess: 20
@@ -156,6 +156,6 @@ Material:
     - _SpecularColor: {r: 0, g: 0, b: 0, a: 1}
     - _WavesColor: {r: 0, g: 0, b: 0, a: 0.25}
     - _WorldLightDir: {r: 0, g: 0, b: 0, a: 0}
-    - g_Color: {r: 0.18977077, g: 0.48036465, b: 0.9558824, a: 0.6666667}
+    - g_Color: {r: 0.18977077, g: 0.48036465, b: 0.9558824, a: 0.7058824}
     - g_LightDir: {r: 1, g: 0.9705882, b: 0.9705882, a: 1}
     - g_SpecColor: {r: 1, g: 1, b: 1, a: 1}

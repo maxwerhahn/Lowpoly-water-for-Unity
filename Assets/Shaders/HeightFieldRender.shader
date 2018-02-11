@@ -11,7 +11,7 @@ Shader "Custom/HeightFieldRender" {
 		g_SpecColor("Specular Color", Color) = (1,1,1,1)
 		g_Attenuation("Attenuation", Range(0.0, 1.0)) = 1.0
 		g_Shininess("Shininess", Range(0.0, 2000.0)) = 20.0
-		g_DepthVisible("maximum Depth", Range(250.0, 10000.0)) = 10000.0
+		g_DepthVisible("maximum Depth", Range(50.0, 1000.0)) = 1000.0
 		[Toggle] g_directionalLight("use directional light", Float) = 0
 	}
 		SubShader{
@@ -53,15 +53,13 @@ Shader "Custom/HeightFieldRender" {
 
 		struct appdata {
 			float4 vertex : POSITION;
-			float2 uv : TEXCOORD0;
 			float3 normal : NORMAL;
 			float4 color : COLOR;
 		};
 
 		struct v2g
 		{
-			float2 uv : TEXCOORD0; // texture coordinate
-			float4 vertex : SV_POSITION; // clip space position
+			float4 vertex : SV_POSITION;
 			float3 normal : NORMAL;
 			float4 color : COLOR;
 		};
@@ -69,9 +67,8 @@ Shader "Custom/HeightFieldRender" {
 		v2g vert(appdata v)
 		{
 			v2g o;
-			o.vertex = (v.vertex);
+			o.vertex = v.vertex;
 			o.color = g_Color;
-			o.uv = v.uv;
 			o.normal = v.normal;
 			return o;
 		}
@@ -80,9 +77,10 @@ Shader "Custom/HeightFieldRender" {
 			float3 normal : NORMAL;
 			float4 vertex : SV_POSITION;
 			float4 color : COLOR;
-			float4 projPos : TEXCOORD1;
+			float4 projPos : TEXCOORD0;
 		};
 
+		//	specular lighting model
 		float4 lighting(float3 centerPos, float3 normal) {
 			float4x4 modelMatrix = unity_ObjectToWorld;
 			float4x4 modelMatrixInverse = unity_WorldToObject;
@@ -91,7 +89,6 @@ Shader "Custom/HeightFieldRender" {
 			float3 normalDirection = normalize(mul(float4(normal, 1.0f), modelMatrixInverse).xyz);
 			float3 viewDirection = normalize(_WorldSpaceCameraPos - pos);
 			float3 lightDirection;
-			float attenuation = 1.0f;
 
 			if (g_directionalLight > 0.5f)
 				lightDirection = -normalize(g_SunDir.xyz);
@@ -132,6 +129,7 @@ Shader "Custom/HeightFieldRender" {
 		[maxvertexcount(6)]
 		void geom(point v2g p[1], inout TriangleStream<g2f> tristream)
 		{
+			//	create two triangles, using 6 vertices and calulating normals, color, clip and projected positions.
 			float3 pos = p[0].vertex.xyz;
 			int k, m = 0;
 			k = round(pos.x / g_fQuadSize);
@@ -167,16 +165,19 @@ Shader "Custom/HeightFieldRender" {
 			o.vertex = UnityObjectToClipPos(pos);
 			o.color = color;
 			o.projPos = ComputeScreenPos(o.vertex);
+			o.projPos.z = -mul(UNITY_MATRIX_MV, float4(pos,1.0f)).z;
 
 			o1.normal = n;
 			o1.vertex = UnityObjectToClipPos(pos1);
 			o1.color = color;
 			o1.projPos = ComputeScreenPos(o1.vertex);
+			o1.projPos.z = -mul(UNITY_MATRIX_MV, float4(pos1, 1.0f)).z;
 
 			o2.normal = n;
 			o2.vertex = UnityObjectToClipPos(pos2);
 			o2.color = color;
 			o2.projPos = ComputeScreenPos(o2.vertex);
+			o2.projPos.z = -mul(UNITY_MATRIX_MV, float4(pos2, 1.0f)).z;
 
 			tristream.Append(o);
 			tristream.Append(o1);
@@ -199,6 +200,7 @@ Shader "Custom/HeightFieldRender" {
 			o1.vertex = UnityObjectToClipPos(pos1);
 			o1.color = color;
 			o1.projPos = ComputeScreenPos(o1.vertex);
+			o1.projPos.z = -mul(UNITY_MATRIX_MV, float4(pos1, 1.0f)).z;
 
 			o2.normal = n;
 			o2.color = color;
@@ -211,16 +213,21 @@ Shader "Custom/HeightFieldRender" {
 
 		fixed4 frag(g2f i) : SV_Target
 		{
-			float sceneZ = LinearEyeDepth(tex2Dproj(_CameraDepthTexture, UNITY_PROJ_COORD(i.projPos)).r);
-			float partZ = i.projPos.z;
-			float diff = (abs(sceneZ - partZ)) / g_DepthVisible;
-			if (diff < 1.0f)
-				return float4(max(i.color.rgb + float3(-0.2f, 0.25f, 0.15f),float3(0.0f,0.0f,0.0f)),i.color.w * 0.9f);
+			//	load stored z-value
+			float depth = i.projPos.z;
+			float sceneZ = LinearEyeDepth(tex2Dproj(_CameraDepthTexture, UNITY_PROJ_COORD(i.projPos)));
+			float diff = (abs(sceneZ - depth));
+
+			//	if an object is close -> change color
+			if (diff < g_DepthVisible && abs(normalize(i.normal).y) > 0.8f) {
+				diff /= g_DepthVisible;
+				return lerp(float4(max(i.color.rgb + float3(-0.3f, 0.25f, -0.05f), float3(0.0f, 0.0f, 0.0f)), i.color.w), i.color,  float4(diff, diff, diff, 1.0f));
+			}
 			else
 				return i.color;
-		}
-		ENDCG
 	}
+	ENDCG
+}
 	}
 		Fallback "Specular"
 }

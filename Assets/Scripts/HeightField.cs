@@ -53,7 +53,7 @@ public class HeightField : MonoBehaviour
 
         heightFieldCB.SetData(hf);
 
-        //  get corresponding kernel indices
+        //  get corresponding kernel index
         kernel = heightFieldCS.FindKernel("updateHeightfield");
 
         setRandomDisplacementBuffer();
@@ -189,11 +189,13 @@ public class HeightField : MonoBehaviour
     {
         //  update heightfield and vertices
         updateHeightfield();
+
+        //  if noisy factor change -> initialize randomDisplacements again
         if (!Mathf.Approximately(maxRandomDisplacement, lastMaxRandomDisplacement))
         {
             setRandomDisplacementBuffer();
         }
-
+        
         Shader.SetGlobalVector("g_SunDir", RenderSettings.sun.transform.forward);
         Shader.SetGlobalVector("g_SunPos", RenderSettings.sun.transform.position);
         Shader.SetGlobalVector("g_SunColor", RenderSettings.sun.color);
