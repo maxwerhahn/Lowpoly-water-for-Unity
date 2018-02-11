@@ -183,7 +183,7 @@ Prefab:
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: 1a8e86f8516cbf14b9231b8139c0e5e8, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 35
+      value: 55
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: 1a8e86f8516cbf14b9231b8139c0e5e8, type: 3}
       propertyPath: m_LocalPosition.z
@@ -365,15 +365,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   heightFieldCS: {fileID: 7200000, guid: 4953ade53a221db458950ff31d7297c6, type: 3}
   mainCam: {fileID: 1846956667}
-  maxRandomDisplacement: 10
-  width: 64
-  depth: 128
-  quadSize: 32
-  speed: 5
+  maxRandomDisplacement: 0.5
+  width: 254
+  depth: 254
+  quadSize: 16
+  speed: 4
   gridSpacing: 1
-  maxHeight: 150
+  maxHeight: 200
   maxVelocity: 100
-  randomInitialVelocity: 3
+  randomInitialVelocity: 5
   dampingVelocity: 0.9999
 --- !u!4 &882867328
 Transform:

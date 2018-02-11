@@ -14,9 +14,12 @@ public class HeightField : MonoBehaviour
     public ComputeShader heightFieldCS;
     public Camera mainCam;
 
+    [Range(0.0f, 1.0f)]
     public float maxRandomDisplacement;     ///  initial random displacement of vertices
 
+    [Range(8, 254)]
     public int width;                       ///  width of height field
+    [Range(8, 254)]
     public int depth;                       ///  depth of height field
     public float quadSize;                  ///  size of one quad
 
@@ -31,9 +34,12 @@ public class HeightField : MonoBehaviour
     private ComputeBuffer heightFieldCB;
     private ComputeBuffer heightFieldCBOut;
 
+    private Vector2[] randomDisplacement;
+    private float lastMaxRandomDisplacement;
+
     private heightField[] hf;
     private int kernel;                     ///   kernel for computeshader
-        
+
     void Start()
     {
         mainCam.depthTextureMode = DepthTextureMode.Depth;
@@ -65,15 +71,16 @@ public class HeightField : MonoBehaviour
 
     void setRandomDisplacementBuffer()
     {
-        Vector2[] randomDisplacement;
         ComputeBuffer randomXZ = new ComputeBuffer(width * depth, 8);
         randomDisplacement = new Vector2[width * depth];
         for (int i = 0; i < randomDisplacement.Length; i++)
         {
-            randomDisplacement[i] = new Vector2(Random.Range(-maxRandomDisplacement, maxRandomDisplacement), Random.Range(-maxRandomDisplacement, maxRandomDisplacement));
+            randomDisplacement[i] = new Vector2(Random.Range(-maxRandomDisplacement * quadSize / 2.5f, maxRandomDisplacement * quadSize / 2.5f),
+                Random.Range(-maxRandomDisplacement * quadSize / 2.5f, maxRandomDisplacement * quadSize / 2.5f));
         }
         randomXZ.SetData(randomDisplacement);
         Shader.SetGlobalBuffer("g_RandomDisplacement", randomXZ);
+        lastMaxRandomDisplacement = maxRandomDisplacement;
     }
 
     void initHeightField()
@@ -117,7 +124,7 @@ public class HeightField : MonoBehaviour
         heightFieldCS.SetFloat("g_fDamping", dampingVelocity);
         heightFieldCS.SetFloat("g_fAvgHeight", currentAvgHeight);
 
-        heightFieldCS.Dispatch(kernel, Mathf.CeilToInt(width / 16), Mathf.CeilToInt(depth / 16), 1);
+        heightFieldCS.Dispatch(kernel, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
         heightFieldCBOut.GetData(hf);
         heightFieldCB.SetData(hf);
         Shader.SetGlobalBuffer("g_HeightField", heightFieldCBOut);
@@ -182,6 +189,10 @@ public class HeightField : MonoBehaviour
     {
         //  update heightfield and vertices
         updateHeightfield();
+        if (!Mathf.Approximately(maxRandomDisplacement, lastMaxRandomDisplacement))
+        {
+            setRandomDisplacementBuffer();
+        }
 
         Shader.SetGlobalVector("g_SunDir", RenderSettings.sun.transform.forward);
         Shader.SetGlobalVector("g_SunPos", RenderSettings.sun.transform.position);

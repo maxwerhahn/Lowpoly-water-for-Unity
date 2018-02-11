@@ -8,6 +8,7 @@
 Shader "Custom/HeightFieldRender" {
 	Properties{
 		g_Color("Color", Color) = (1,1,1,1)
+		g_SpecColor("Specular Color", Color) = (1,1,1,1)
 		g_Attenuation("Attenuation", Range(0.0, 1.0)) = 1.0
 		g_Shininess("Shininess", Range(0.0, 2000.0)) = 20.0
 		g_DepthVisible("maximum Depth", Range(250.0, 10000.0)) = 10000.0
@@ -22,7 +23,7 @@ Shader "Custom/HeightFieldRender" {
 
 		Pass{
 		CGPROGRAM
-		
+
 		#pragma target 5.0
 		// Physically based Standard lighting model, and enable shadows on all light types
 		#pragma vertex vert
@@ -41,6 +42,7 @@ Shader "Custom/HeightFieldRender" {
 		float g_Shininess;
 		float g_DepthVisible;
 		fixed4 g_Color;
+		fixed4 g_SpecColor;
 		fixed4 g_SunDir;
 		fixed4 g_SunColor;
 		fixed4 g_SunPos;
@@ -89,17 +91,24 @@ Shader "Custom/HeightFieldRender" {
 			float3 normalDirection = normalize(mul(float4(normal, 1.0f), modelMatrixInverse).xyz);
 			float3 viewDirection = normalize(_WorldSpaceCameraPos - pos);
 			float3 lightDirection;
+			float attenuation = 1.0f;
+
 			if (g_directionalLight > 0.5f)
 				lightDirection = -normalize(g_SunDir.xyz);
 			else
 				lightDirection = normalize(-pos + g_SunPos.xyz);
+
 			float3 ambientLighting = UNITY_LIGHTMODEL_AMBIENT.rgb * g_Color.rgb;
 
-			float3 diffuseReflection = g_Attenuation * g_Color.rgb * max(0.0, dot(normalDirection, lightDirection));
+			float3 diffuseReflection = g_Attenuation * g_SunColor.rgb * g_Color.rgb * max(0.0, dot(normalDirection, lightDirection));
 
-			float3 specularReflection = g_Attenuation * g_SunColor.rgb * pow(max(0.0, dot(reflect(-lightDirection, normalDirection), viewDirection)), g_Shininess);
+			float3 specularReflection;
+			if (dot(normalDirection, lightDirection) >= 0.0f)
+				specularReflection = g_Attenuation * g_SpecColor.rgb * g_SunColor.rgb * pow(max(0.0, dot(reflect(-lightDirection, normalDirection), viewDirection)), g_Shininess);
+			else
+				specularReflection = float3(0.0f, 0.0f, 0.0f);
 
-			return float4(ambientLighting + specularReflection + diffuseReflection , g_Color.w);
+			return float4(ambientLighting + specularReflection + diffuseReflection, g_Color.w);
 		}
 
 		float interpolateHeight(float3 pos, float k, float m) {
@@ -194,7 +203,6 @@ Shader "Custom/HeightFieldRender" {
 			o2.normal = n;
 			o2.color = color;
 
-
 			tristream.Append(o);
 			tristream.Append(o2);
 			tristream.Append(o1);
@@ -202,12 +210,12 @@ Shader "Custom/HeightFieldRender" {
 		}
 
 		fixed4 frag(g2f i) : SV_Target
-		{ 
+		{
 			float sceneZ = LinearEyeDepth(tex2Dproj(_CameraDepthTexture, UNITY_PROJ_COORD(i.projPos)).r);
 			float partZ = i.projPos.z;
 			float diff = (abs(sceneZ - partZ)) / g_DepthVisible;
 			if (diff < 1.0f)
-				return float4(i.color.rgb + float3(-0.15f, 0.2f,0.1f), i.color.w - 0.1f);
+				return float4(max(i.color.rgb + float3(-0.2f, 0.25f, 0.15f),float3(0.0f,0.0f,0.0f)),i.color.w * 0.9f);
 			else
 				return i.color;
 		}
