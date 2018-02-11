@@ -7,14 +7,13 @@ Material:
   m_PrefabParentObject: {fileID: 0}
   m_PrefabInternal: {fileID: 0}
   m_Name: mesh
-  m_Shader: {fileID: 45, guid: 0000000000000000f000000000000000, type: 0}
+  m_Shader: {fileID: 4800000, guid: 89b3e96f790e23645bd587a36de5027e, type: 3}
   m_ShaderKeywords: _ALPHAPREMULTIPLY_ON _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
-  m_CustomRenderQueue: 3000
-  stringTagMap:
-    RenderType: Transparent
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
   disabledShaderPasses: []
   m_SavedProperties:
     serializedVersion: 3
@@ -120,6 +119,11 @@ Material:
     - _WaveScale: 0.063
     - _WavesDensity: 0
     - _ZWrite: 0
+    - g_Glossiness: 0.5
+    - g_Metallic: 0
+    - g_fQuadSize: 8
+    - g_iDepth: 128
+    - g_iWidth: 256
     m_Colors:
     - WaveSpeed: {r: 19, g: 9, b: -16, a: -7}
     - _AnimationDirection: {r: 0, g: 0, b: 0, a: 0}
@@ -127,7 +131,7 @@ Material:
     - _BaseColor: {r: 0, g: 0.91111135, b: 1, a: 1}
     - _BumpDirection: {r: 0, g: 0, b: 0, a: 0}
     - _BumpTiling: {r: 0, g: 0, b: 0, a: 0}
-    - _Color: {r: 0.014705896, g: 1, b: 0.8776877, a: 0.547}
+    - _Color: {r: 0.014705896, g: 1, b: 0.8776877, a: 1}
     - _DistortParams: {r: 0, g: 0, b: 0, a: 0}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _Flip: {r: 1, g: 1, b: 1, a: 1}
@@ -147,3 +151,5 @@ Material:
     - _SpecularColor: {r: 0, g: 0, b: 0, a: 1}
     - _WavesColor: {r: 0, g: 0, b: 0, a: 0.25}
     - _WorldLightDir: {r: 0, g: 0, b: 0, a: 0}
+    - g_Color: {r: 0, g: 0.6544118, b: 0.5731745, a: 1}
+    - g_LightDir: {r: 1, g: 0.9705882, b: 0.9705882, a: 1}

@@ -1,5 +1,4 @@
 ﻿#pragma kernel updateHeightfield
-#pragma kernel interpolateVertices
 
 struct HeightField {
 	float height;
@@ -21,6 +20,8 @@ RWStructuredBuffer<HeightField> heightFieldOut : register(u0);
 StructuredBuffer<HeightField> heightFieldIn : register(t0);
 
 RWStructuredBuffer<float3> verticesPosition : register(u1);
+
+RWStructuredBuffer<float3> verticesNormal : register(u0);
 
 [numthreads(16, 16, 1)]
 void updateHeightfield(uint3 id : SV_DispatchThreadID)
