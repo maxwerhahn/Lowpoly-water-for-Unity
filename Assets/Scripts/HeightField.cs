@@ -5,67 +5,73 @@ using System.Linq;
 
 public class HeightField : MonoBehaviour
 {
-    public int width;                       ///  width of height field
-    public int depth;                       ///  depth of height field
-
-    public float speed;                     ///  speed of waves
-    //private float size;                     //  grid spacing
-
-    public float quadSize;                  ///  size of one quad
-    public float maxHeight;                 ///  maximum height in height field
-    public float maxVelocity;               ///  maximum velocity of vertices
-    public float randomVelocity;              ///  apply random velocity to randomly chosen vertices
-    public float dampingVelocity;           ///  damping factor for velocities
-
-    public bool smoothedNormals;
-
-    private Vector3[] newVertices;          ///  store vertices of mesh
-    private int[] newTriangles;             ///  store triangles of mesh
-
-    public ComputeShader heightFieldCS;
-    private ComputeBuffer heightFieldCB;
-    private ComputeBuffer heightFieldCBOut;
-    private ComputeBuffer verticesCB;
-   
-    private int kernel;
-    private int kernelVertices;
-
     struct heightField
     {
         public float height;
         public float velocity;
     }
 
-    heightField[] hf;
+    //  public variables
+    public ComputeShader heightFieldCS;
+
+    public float maxRandomDisplacement;     ///  initial random displacement of vertices
+
+    public int width;                       ///  width of height field
+    public int depth;                       ///  depth of height field
+    public float quadSize;                  ///  size of one quad
+
+    public float speed;                     ///  speed of waves
+    public float gridSpacing;               ///  grid spacing        
+    public float maxHeight;                 ///  maximum height in height field
+    public float maxVelocity;               ///  maximum velocity of vertices
+    public float randomInitialVelocity;     ///  apply random velocity to randomly chosen vertices
+    public float dampingVelocity;           ///  damping factor for velocities
+
+    //  private variables
+    private ComputeBuffer heightFieldCB;
+    private ComputeBuffer heightFieldCBOut;
+
+    private heightField[] hf;
+    private int kernel;                     ///   kernel for computeshader
+        
     void Start()
     {
-        //size = 1.2f;
-        newVertices = new Vector3[width * depth];
-        newTriangles = new int[(width - 1) * (depth - 1) * 6];
-
         initHeightField();
-        //  initialize vertices positions in a rectangle shapee shape
-        if (smoothedNormals)
-            CreateMesh2();
-        else
-            CreateMesh();
-
+        CreateMesh();
 
         //  initialize buffers
         heightFieldCB = new ComputeBuffer(width * depth, 8);
         heightFieldCBOut = new ComputeBuffer(width * depth, 8);
-        verticesCB = new ComputeBuffer(newVertices.Length, 12);
-        
+
         heightFieldCB.SetData(hf);
 
         //  get corresponding kernel indices
         kernel = heightFieldCS.FindKernel("updateHeightfield");
-        kernelVertices = heightFieldCS.FindKernel("interpolateVertices");
+
+        setRandomDisplacementBuffer();
 
         //  set constants
         heightFieldCS.SetFloat("g_fQuadSize", quadSize);
         heightFieldCS.SetInt("g_iDepth", depth);
         heightFieldCS.SetInt("g_iWidth", width);
+        heightFieldCS.SetFloat("g_fGridSpacing", gridSpacing); // could be changed to quadSize, but does not yield good results
+
+        Shader.SetGlobalFloat("g_fQuadSize", quadSize);
+        Shader.SetGlobalInt("g_iDepth", depth);
+        Shader.SetGlobalInt("g_iWidth", width);
+    }
+
+    void setRandomDisplacementBuffer()
+    {
+        Vector2[] randomDisplacement;
+        ComputeBuffer randomXZ = new ComputeBuffer(width * depth, 8);
+        randomDisplacement = new Vector2[width * depth];
+        for (int i = 0; i < randomDisplacement.Length; i++)
+        {
+            randomDisplacement[i] = new Vector2(Random.Range(-maxRandomDisplacement, maxRandomDisplacement), Random.Range(-maxRandomDisplacement, maxRandomDisplacement));
+        }
+        randomXZ.SetData(randomDisplacement);
+        Shader.SetGlobalBuffer("g_RandomDisplacement", randomXZ);
     }
 
     void initHeightField()
@@ -84,120 +90,46 @@ public class HeightField : MonoBehaviour
 
         for (int i = 0; i < hf.Length; i++)
         {
-            hf[i].velocity += Random.Range(-randomVelocity, randomVelocity);
+            hf[i].velocity += Random.Range(-randomInitialVelocity, randomInitialVelocity);
         }
     }
 
     //  dispatch of compute shader
-    void updateHeightfield(float avg)
+    void updateHeightfield()
     {
-        heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
+        //  calculate average of all points in the heightfield (might be unecessary)
+        float currentAvgHeight = 0.0f;
+        for (int i = 0; i < hf.Length; i++)
+        {
+            currentAvgHeight += hf[i].height;
+        }
+        currentAvgHeight /= hf.Length;
 
-        heightFieldCB.SetData(hf);
+        heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
         heightFieldCS.SetBuffer(kernel, "heightFieldOut", heightFieldCBOut);
-        
+
         heightFieldCS.SetFloat("g_fDeltaTime", Time.deltaTime);
         heightFieldCS.SetFloat("g_fSpeed", speed);
         heightFieldCS.SetFloat("g_fMaxVelocity", maxVelocity);
         heightFieldCS.SetFloat("g_fMaxHeight", maxHeight);
         heightFieldCS.SetFloat("g_fDamping", dampingVelocity);
-        heightFieldCS.SetFloat("g_fAvgHeight", avg);
-        heightFieldCS.SetFloat("g_fGridSpacing", 1); // could be changed to quadSize
+        heightFieldCS.SetFloat("g_fAvgHeight", currentAvgHeight);
 
-        heightFieldCS.Dispatch(kernel, width / 16, depth / 16, 1);
+        heightFieldCS.Dispatch(kernel, Mathf.CeilToInt(width / 16), Mathf.CeilToInt(depth / 16), 1);
         heightFieldCBOut.GetData(hf);
         heightFieldCB.SetData(hf);
-    }
-
-    //  dispatch of compute shader
-    void updateVertices()
-    {
-        verticesCB.SetData(newVertices);
-        heightFieldCS.SetBuffer(kernelVertices, "heightFieldIn", heightFieldCB);
-        heightFieldCS.SetBuffer(kernelVertices, "verticesPosition", verticesCB);
-
-        heightFieldCS.Dispatch(kernelVertices, newVertices.Length / 256 + 1, 1, 1);
-        verticesCB.GetData(newVertices);
-    }
-
-    //  creates mesh with flat shading
-    void CreateMesh()
-    {
-        Vector2[] newUV;
-        newVertices = new Vector3[newTriangles.Length];
-        newUV = new Vector2[newVertices.Length];
-        
-        //  random displacement in x and z position added to vertices
-        Vector2[] randomDisplacement = new Vector2[width * depth];
-        for (int i = 0; i < randomDisplacement.Length; i++)
-        {
-            randomDisplacement[i] = new Vector2(Random.Range(-quadSize / 3f, quadSize / 3f), Random.Range(-quadSize / 3f, quadSize / 3f));
-        }
-
-        //  represent quads by two triangles
-        int tri = 0;
-        for (int i = 0; i < width - 1; i++)
-        {
-            for (int j = 0; j < depth - 1; j++)
-            {
-                for (int u = 0; u < 6; u++)
-                {
-                    Vector3 pos = newVertices[tri + u];
-                    switch (u)
-                    {
-                        case 0:
-                            pos.x = (i) * quadSize + randomDisplacement[(i) * depth + (j)].x;
-                            pos.z = (j) * quadSize + randomDisplacement[(i) * depth + (j)].y;
-                            break;
-                        case 1:
-                            pos.x = (i) * quadSize + randomDisplacement[(i) * depth + (j + 1)].x;
-                            pos.z = (j + 1) * quadSize + randomDisplacement[(i) * depth + (j + 1)].y;
-                            break;
-                        case 2:
-                            pos.x = (i + 1) * quadSize + randomDisplacement[(i + 1) * depth + (j + 1)].x;
-                            pos.z = (j + 1) * quadSize + randomDisplacement[(i + 1) * depth + (j + 1)].y;
-                            break;
-                        case 3:
-                            pos.x = (i) * quadSize + randomDisplacement[(i) * depth + (j)].x;
-                            pos.z = (j) * quadSize + randomDisplacement[(i) * depth + (j)].y;
-                            break;
-                        case 4:
-                            pos.x = (i + 1) * quadSize + randomDisplacement[(i + 1) * depth + (j + 1)].x;
-                            pos.z = (j + 1) * quadSize + randomDisplacement[(i + 1) * depth + (j + 1)].y;
-                            break;
-                        case 5:
-                            pos.x = (i + 1) * quadSize + randomDisplacement[(i + 1) * depth + (j)].x;
-                            pos.z = (j) * quadSize + randomDisplacement[(i + 1) * depth + (j)].y;
-                            break;
-                    }
-                    newVertices[tri + u] = new Vector3(pos.x, 0, pos.z);
-                    newTriangles[tri + u] = tri + u;
-                }
-                tri += 6;
-            }
-        }
-
-        for (int i = 0; i < newUV.Length; i++)
-        {
-            newUV[i] = new Vector2(newVertices[i].x, newVertices[i].z);
-        }
-
-        Mesh mesh;
-        //  create new mesh
-        mesh = new Mesh();
-
-        mesh.vertices = newVertices;
-        mesh.triangles = newTriangles;
-        mesh.uv = newUV;
-        mesh.RecalculateNormals();
-
-        GetComponent<MeshFilter>().mesh = mesh;
+        Shader.SetGlobalBuffer("g_HeightField", heightFieldCBOut);
     }
 
     //  creates mesh without flat shading
-    void CreateMesh2()
+    void CreateMesh()
     {
         Vector2[] newUV;
+        Vector3[] newVertices;
+        int[] newTriangles;
+
+        newVertices = new Vector3[width * depth];
+        newTriangles = new int[(width - 1) * (depth - 1) * 6];
         newUV = new Vector2[newVertices.Length];
 
         for (int i = 0; i < width; i++)
@@ -233,46 +165,23 @@ public class HeightField : MonoBehaviour
                 tri += 3;
             }
         }
-        Mesh mesh;
         //  create new mesh
-        mesh = new Mesh();
+        Mesh mesh = new Mesh();
 
+        mesh.MarkDynamic();
         mesh.vertices = newVertices;
         mesh.triangles = newTriangles;
         mesh.uv = newUV;
-        mesh.RecalculateNormals();
 
         GetComponent<MeshFilter>().mesh = mesh;
     }
 
     void Update()
     {
-        float avg = 0.0f;
-        //  calculate average of all points in the heightfield (might be unecessary)
-        for (int i = 0; i < hf.Length; i++)
-        {
-            avg += hf[i].height;
-        }
-        avg /= hf.Length;
-
         //  update heightfield and vertices
-        updateHeightfield(avg);
-        updateVertices();
-        
-        //  reset mesh with new vertices
-        Mesh mesh = GetComponent<MeshFilter>().mesh;        
-        mesh.vertices = newVertices;
-        mesh.RecalculateNormals();
-        GetComponent<MeshFilter>().mesh = mesh;
-    }
+        updateHeightfield();
 
-    public void StartWave()
-    {
-        //  start wave but keep overall height the same
-        for (int i = 0; i < width; i++)
-        {
-            hf[i * depth].height += maxHeight;
-            hf[i * depth + depth - 1].height -= maxHeight;
-        }
+        Shader.SetGlobalVector("g_SunDir", RenderSettings.sun.transform.forward);
+        Shader.SetGlobalVector("g_SunColor", RenderSettings.sun.color);
     }
 }

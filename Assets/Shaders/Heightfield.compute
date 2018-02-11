@@ -1,5 +1,4 @@
 ﻿#pragma kernel updateHeightfield
-#pragma kernel interpolateVertices
 
 struct HeightField {
 	float height;
@@ -20,15 +19,12 @@ uint g_iWidth;			//	width "-"
 RWStructuredBuffer<HeightField> heightFieldOut : register(u0);
 StructuredBuffer<HeightField> heightFieldIn : register(t0);
 
-RWStructuredBuffer<float3> verticesPosition : register(u1);
-
 [numthreads(16, 16, 1)]
 void updateHeightfield(uint3 id : SV_DispatchThreadID)
 {
 	//	https://www.cs.ubc.ca/~rbridson/fluidsimulation/GameFluids2007.pdf
 	//	http://matthias-mueller-fischer.ch/talks/GDC2008.pdf
-
-
+	
 	//	get corresponding indices of current thread
 	int i = id.x;
 	int j = id.y;
@@ -44,7 +40,7 @@ void updateHeightfield(uint3 id : SV_DispatchThreadID)
 	heightFieldOut[i * g_iDepth + j].velocity = heightFieldIn[i * g_iDepth + j].velocity + g_fDeltaTime * g_fSpeed * g_fSpeed *
 		((heightFieldIn[max(i - 1, 0) * g_iDepth + j].height + heightFieldIn[min(g_iWidth - 1, i + 1) * g_iDepth + j].height
 			+ heightFieldIn[i * g_iDepth + max(j - 1, 0)].height + heightFieldIn[i * g_iDepth + min(g_iDepth - 1, j + 1)].height)
-			- 4 * heightFieldIn[i * g_iDepth + j].height) / (g_fGridSpacing * g_fGridSpacing);
+			- 4 * (heightFieldIn[i * g_iDepth + j].height)) / (g_fGridSpacing * g_fGridSpacing);
 
 	//	clamping and damping of velocity
 	heightFieldOut[i * g_iDepth + j].velocity = clamp(heightFieldOut[i * g_iDepth + j].velocity, -g_fMaxVelocity, g_fMaxVelocity);
@@ -55,31 +51,7 @@ void updateHeightfield(uint3 id : SV_DispatchThreadID)
 
 	//	keep average Height of all points at ca. 0
 	heightFieldOut[i * g_iDepth + j].height -= g_fAvgHeight;
+
 	//	clamp height
 	heightFieldOut[i * g_iDepth + j].height = clamp(heightFieldOut[i * g_iDepth + j].height, -g_fMaxHeight, g_fMaxHeight);
-}
-
-[numthreads(256, 1, 1)]
-void interpolateVertices(uint3 id : SV_DispatchThreadID)
-{
-	int i = id.x;
-	float3 pos = verticesPosition[i];
-	int k, m = 0;
-	k = (int)(pos.x / g_fQuadSize);
-	m = (int)(pos.z / g_fQuadSize);
-
-	//	get surrounding height values at the vertex position (can be randomly displaced)
-	float x1 = heightFieldIn[k * g_iDepth + m].height;
-	float x2 = heightFieldIn[min((k + 1), g_iWidth - 1) * g_iDepth + min(m + 1, g_iDepth - 1)].height;
-	float x3 = heightFieldIn[k * g_iDepth + min(m + 1, g_iDepth - 1)].height;
-	float x4 = heightFieldIn[min((k + 1), g_iWidth - 1) * g_iDepth + m].height;
-
-	//	get x and y value between 0 and 1 for interpolation
-	float x = (pos.x / g_fQuadSize - k);
-	float y = (pos.z / g_fQuadSize - m);
-
-	//	bilinear interpolation to get height at vertex i
-	//	note if x == 0 and y == 0 vertex position is at heightfield position.
-	float resultingHeight = (x1 * (1 - x) + x4 * (x)) * (1 - y) + (x3 * (1 - x) + x2 * (x)) * (y);
-	verticesPosition[i].y = resultingHeight;
 }
