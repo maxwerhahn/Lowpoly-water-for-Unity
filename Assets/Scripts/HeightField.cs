@@ -74,7 +74,7 @@ public class HeightField : MonoBehaviour
         randomDisplacement = new Vector2[width * depth];
         for (int i = 0; i < randomDisplacement.Length; i++)
         {
-            randomDisplacement[i] = new Vector2(Random.Range(-quadSize / 3f, quadSize / 3f), Random.Range(-quadSize / 3f, quadSize / 3f));
+            randomDisplacement[i] = new Vector2(Random.Range(-quadSize / 3.5f, quadSize / 3.5f), Random.Range(-quadSize / 3.5f, quadSize / 3.5f));
         }
         randomXZ.SetData(randomDisplacement);
         Shader.SetGlobalBuffer("g_RandomDisplacement", randomXZ);

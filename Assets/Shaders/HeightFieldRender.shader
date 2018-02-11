@@ -101,6 +101,24 @@ Shader "Custom/HeightFieldRender" {
 			return float4(ambientLighting + specularReflection + diffuseReflection,1.0f);
 		}
 
+		float interpolateHeight(float3 pos, float k, float m) {
+
+			//	get surrounding height values at the vertex position (can be randomly displaced)
+			float x1 = g_HeightField[k * g_iDepth + m].x;
+			float x2 = g_HeightField[min((k + 1), g_iWidth - 1) * g_iDepth + min(m + 1, g_iDepth - 1)].x;
+			float x3 = g_HeightField[k * g_iDepth + min(m + 1, g_iDepth - 1)].x;
+			float x4 = g_HeightField[min((k + 1), g_iWidth - 1) * g_iDepth + m].x;
+
+			//	get x and y value between 0 and 1 for interpolation
+			float x = (pos.x / g_fQuadSize - k);
+			float y = (pos.z / g_fQuadSize - m);
+
+			//	bilinear interpolation to get height at vertex i
+			//	note if x == 0 and y == 0 vertex position is at heightfield position.
+			float resultingHeight = (x1 * (1 - x) + x4 * (x)) * (1 - y) + (x3 * (1 - x) + x2 * (x)) * (y);
+			return resultingHeight;
+		}
+
 		[maxvertexcount(12)]
 		void geom(point v2g p[1], inout TriangleStream<g2f> tristream)
 		{
@@ -112,10 +130,10 @@ Shader "Custom/HeightFieldRender" {
 			m = round(pos.z / g_fQuadSize);
 			if (k != g_iWidth - 1 && m != g_iDepth) {
 				pos.x = k * g_fQuadSize;
-				pos.y = g_HeightField[k * g_iDepth + m];
 				pos.z = m * g_fQuadSize;
 				pos.x += g_RandomDisplacement[(k)* g_iDepth + m].x;
 				pos.z += g_RandomDisplacement[(k)* g_iDepth + m].y;
+				pos.y = interpolateHeight(pos, k, m);
 
 				g2f o;
 				g2f o1;
@@ -124,16 +142,16 @@ Shader "Custom/HeightFieldRender" {
 				float3 pos1 = pos;
 				pos1.z = (m + 1) * g_fQuadSize;
 				pos1.x = (k)* g_fQuadSize;
-				pos1.y = g_HeightField[k * g_iDepth + (m + 1)];
 				pos1.x += g_RandomDisplacement[k * g_iDepth + m + 1].x;
 				pos1.z += g_RandomDisplacement[k * g_iDepth + m + 1].y;
+				pos1.y = interpolateHeight(pos1, k, m + 1);
 
 				float3 pos2 = pos;
 				pos2.z = (m + 1) * g_fQuadSize;
 				pos2.x = (k + 1) * g_fQuadSize;
-				pos2.y = g_HeightField[(k + 1) * g_iDepth + (m + 1)];
 				pos2.x += g_RandomDisplacement[(k + 1) * g_iDepth + m + 1].x;
 				pos2.z += g_RandomDisplacement[(k + 1) * g_iDepth + m + 1].y;
+				pos2.y = interpolateHeight(pos2, k + 1, m + 1);
 
 				float3 n = cross(pos1 - pos, pos2 - pos);
 
@@ -169,9 +187,9 @@ Shader "Custom/HeightFieldRender" {
 
 				pos1.x = (k + 1) * g_fQuadSize;
 				pos1.z = m * g_fQuadSize;
-				pos1.y = g_HeightField[(k + 1) * g_iDepth + m];
 				pos1.x += g_RandomDisplacement[(k + 1) * g_iDepth + m].x;
 				pos1.z += g_RandomDisplacement[(k + 1) * g_iDepth + m].y;
+				pos1.y = interpolateHeight(pos1, k + 1, m);
 
 				n = cross(pos2 - pos, pos1 - pos);
 
