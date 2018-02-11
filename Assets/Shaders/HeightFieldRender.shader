@@ -8,12 +8,18 @@
 Shader "Custom/HeightFieldRender" {
 	Properties{
 		g_Color("Color", Color) = (1,1,1,1)
+		g_Attenuation("Attenuation", Range(0.0, 1.0)) = 1.0
 	}
 		SubShader{
 		Tags { "Queue" = "Transparent" "RenderType" = "Transparent" }
+
 		LOD 200
+		ZWrite Off
+		Blend SrcAlpha OneMinusSrcAlpha
+
 		Pass{
 		CGPROGRAM
+
 
 		#pragma target 5.0
 		// Physically based Standard lighting model, and enable shadows on all light types
@@ -28,12 +34,10 @@ Shader "Custom/HeightFieldRender" {
 		int g_iDepth;
 		int g_iWidth;
 
-		half g_Glossiness;
-		half g_Metallic;
+		float g_Attenuation;
 		fixed4 g_Color;
 		fixed4 g_SunDir;
 		fixed4 g_SunColor;
-
 
 		#ifdef SHADER_API_D3D11
 
@@ -74,31 +78,20 @@ Shader "Custom/HeightFieldRender" {
 		};
 
 		float4 lighting(float3 centerPos, float3 normal) {
-			float3 vn = normal;
 			float4x4 modelMatrix = unity_ObjectToWorld;
 			float4x4 modelMatrixInverse = unity_WorldToObject;
 
-			float3 normalDirection = normalize(mul(float4(vn, 0.0f), modelMatrixInverse).xyz);
-			float3 viewDirection = normalize(_WorldSpaceCameraPos - mul(modelMatrix, float4(centerPos, 0.0)).xyz);
-			float3 lightDirection = normalize(_WorldSpaceLightPos0.xyz);
-			float attenuation = 1.0;
+			float3 normalDirection = normalize(mul(float4(normal, 0.0f), modelMatrixInverse).xyz);
+			float3 viewDirection = normalize(_WorldSpaceCameraPos - mul(modelMatrix, float4(centerPos, 0.0f)).xyz);
+			float3 lightDirection = -normalize(g_SunDir.xyz);
 
-			float3 ambientLighting =
-				UNITY_LIGHTMODEL_AMBIENT.rgb * g_Color.rgb;
+			float3 ambientLighting = UNITY_LIGHTMODEL_AMBIENT.rgb * g_Color.rgb;
 
-			float3 diffuseReflection =
-				attenuation * g_SunColor.rgb * g_Color.rgb
-				* max(0.0, dot(normalDirection, lightDirection));
+			float3 diffuseReflection = g_Attenuation * g_Color.rgb * max(0.0, dot(normalDirection, lightDirection));
 
-			float3 specularReflection;
-
-				specularReflection = attenuation * g_SunColor.rgb
-					* g_SunColor.rgb * pow(max(0.0, dot(
-						reflect(-lightDirection, normalDirection),
-						viewDirection)), 1.0f);
-
-
-			return float4(ambientLighting + specularReflection + diffuseReflection,1.0f);
+			float3 specularReflection = g_Attenuation * g_SunColor.rgb * pow(max(0.0, dot(reflect(-lightDirection, normalDirection), viewDirection)), 20.0f);
+			
+			return float4(ambientLighting + specularReflection + diffuseReflection, g_Color.w);
 		}
 
 		float interpolateHeight(float3 pos, float k, float m) {
@@ -128,7 +121,6 @@ Shader "Custom/HeightFieldRender" {
 			int k, m = 0;
 			k = round(pos.x / g_fQuadSize);
 			m = round(pos.z / g_fQuadSize);
-			if (k != g_iWidth - 1 && m != g_iDepth) {
 				pos.x = k * g_fQuadSize;
 				pos.z = m * g_fQuadSize;
 				pos.x += g_RandomDisplacement[(k)* g_iDepth + m].x;
@@ -172,17 +164,18 @@ Shader "Custom/HeightFieldRender" {
 				tristream.Append(o);
 				tristream.Append(o1);
 				tristream.Append(o2);
+				tristream.RestartStrip(); 
 
-				tristream.RestartStrip();
-
-				o.normal = -o.normal;
-				o1.normal = -o.normal;
-				o2.normal = -o.normal;
-
+				color = lighting((pos + pos1 + pos2) / 3.0f, -n);
+				o.normal = -n;
+				o.color = color;
+				o1.normal = o.normal;
+				o1.color = color;
+				o2.normal = o.normal;
+				o2.color = color;
 				tristream.Append(o);
 				tristream.Append(o2);
 				tristream.Append(o1);
-
 				tristream.RestartStrip();
 
 				pos1.x = (k + 1) * g_fQuadSize;
@@ -204,22 +197,25 @@ Shader "Custom/HeightFieldRender" {
 				o1.color = color;
 
 				o2.normal = n;
+				o2.color = color;
+
+				tristream.Append(o);
+				tristream.Append(o2);
+				tristream.Append(o1);
+				tristream.RestartStrip();
+
+				color = lighting((pos + pos1 + pos2) / 3.0f, -n);
+				o.normal = -n;
+				o.color = color;
+				o1.normal = o.normal;
 				o1.color = color;
-
-				tristream.Append(o);
-				tristream.Append(o2);
-				tristream.Append(o1);
-
-				tristream.RestartStrip();
-				o.normal = -o.normal;
-				o1.normal = -o.normal;
-				o2.normal = -o.normal;
+				o2.normal = o.normal;
+				o2.color = color;
 				tristream.Append(o);
 				tristream.Append(o1);
 				tristream.Append(o2);
-
 				tristream.RestartStrip();
-			}
+			
 #endif
 		}
 
