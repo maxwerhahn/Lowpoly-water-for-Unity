@@ -10,19 +10,19 @@ Shader "Custom/HeightFieldRender" {
 		g_Color("Color", Color) = (1,1,1,1)
 		g_Attenuation("Attenuation", Range(0.0, 1.0)) = 1.0
 		g_Shininess("Shininess", Range(0.0, 2000.0)) = 20.0
+		g_DepthVisible("maximum Depth", Range(250.0, 10000.0)) = 10000.0
 		[Toggle] g_directionalLight("use directional light", Float) = 0
 	}
 		SubShader{
 		Tags { "Queue" = "Transparent" "RenderType" = "Transparent" }
 
-		LOD 200
-		ZWrite Off
+		ZWrite On
+		Cull Off
 		Blend SrcAlpha OneMinusSrcAlpha
 
 		Pass{
 		CGPROGRAM
-
-
+		
 		#pragma target 5.0
 		// Physically based Standard lighting model, and enable shadows on all light types
 		#pragma vertex vert
@@ -39,17 +39,15 @@ Shader "Custom/HeightFieldRender" {
 		float g_directionalLight;
 		float g_Attenuation;
 		float g_Shininess;
+		float g_DepthVisible;
 		fixed4 g_Color;
 		fixed4 g_SunDir;
 		fixed4 g_SunColor;
 		fixed4 g_SunPos;
-
-		#ifdef SHADER_API_D3D11
+		uniform sampler2D _CameraDepthTexture;
 
 		StructuredBuffer<float2> g_HeightField : register(t1);
 		StructuredBuffer<float2> g_RandomDisplacement : register(t2);
-
-		#endif
 
 		struct appdata {
 			float4 vertex : POSITION;
@@ -80,6 +78,7 @@ Shader "Custom/HeightFieldRender" {
 			float3 normal : NORMAL;
 			float4 vertex : SV_POSITION;
 			float4 color : COLOR;
+			float4 projPos : TEXCOORD1;
 		};
 
 		float4 lighting(float3 centerPos, float3 normal) {
@@ -89,8 +88,8 @@ Shader "Custom/HeightFieldRender" {
 
 			float3 normalDirection = normalize(mul(float4(normal, 1.0f), modelMatrixInverse).xyz);
 			float3 viewDirection = normalize(_WorldSpaceCameraPos - pos);
-			float3 lightDirection; 
-			if(g_directionalLight > 0.5f)
+			float3 lightDirection;
+			if (g_directionalLight > 0.5f)
 				lightDirection = -normalize(g_SunDir.xyz);
 			else
 				lightDirection = normalize(-pos + g_SunPos.xyz);
@@ -121,116 +120,96 @@ Shader "Custom/HeightFieldRender" {
 			return resultingHeight;
 		}
 
-		[maxvertexcount(12)]
+		[maxvertexcount(6)]
 		void geom(point v2g p[1], inout TriangleStream<g2f> tristream)
 		{
-
-#ifdef SHADER_API_D3D11
 			float3 pos = p[0].vertex.xyz;
 			int k, m = 0;
 			k = round(pos.x / g_fQuadSize);
 			m = round(pos.z / g_fQuadSize);
-				pos.x = k * g_fQuadSize;
-				pos.z = m * g_fQuadSize;
-				pos.x += g_RandomDisplacement[(k)* g_iDepth + m].x;
-				pos.z += g_RandomDisplacement[(k)* g_iDepth + m].y;
-				pos.y = interpolateHeight(pos, k, m);
+			pos.x = k * g_fQuadSize;
+			pos.z = m * g_fQuadSize;
+			pos.x += g_RandomDisplacement[(k)* g_iDepth + m].x;
+			pos.z += g_RandomDisplacement[(k)* g_iDepth + m].y;
+			pos.y = interpolateHeight(pos, k, m);
 
-				g2f o;
-				g2f o1;
-				g2f o2;
+			g2f o;
+			g2f o1;
+			g2f o2;
 
-				float3 pos1 = pos;
-				pos1.z = (m + 1) * g_fQuadSize;
-				pos1.x = (k)* g_fQuadSize;
-				pos1.x += g_RandomDisplacement[k * g_iDepth + m + 1].x;
-				pos1.z += g_RandomDisplacement[k * g_iDepth + m + 1].y;
-				pos1.y = interpolateHeight(pos1, k, m + 1);
+			float3 pos1 = pos;
+			pos1.z = (m + 1) * g_fQuadSize;
+			pos1.x = (k)* g_fQuadSize;
+			pos1.x += g_RandomDisplacement[k * g_iDepth + m + 1].x;
+			pos1.z += g_RandomDisplacement[k * g_iDepth + m + 1].y;
+			pos1.y = interpolateHeight(pos1, k, m + 1);
 
-				float3 pos2 = pos;
-				pos2.z = (m + 1) * g_fQuadSize;
-				pos2.x = (k + 1) * g_fQuadSize;
-				pos2.x += g_RandomDisplacement[(k + 1) * g_iDepth + m + 1].x;
-				pos2.z += g_RandomDisplacement[(k + 1) * g_iDepth + m + 1].y;
-				pos2.y = interpolateHeight(pos2, k + 1, m + 1);
+			float3 pos2 = pos;
+			pos2.z = (m + 1) * g_fQuadSize;
+			pos2.x = (k + 1) * g_fQuadSize;
+			pos2.x += g_RandomDisplacement[(k + 1) * g_iDepth + m + 1].x;
+			pos2.z += g_RandomDisplacement[(k + 1) * g_iDepth + m + 1].y;
+			pos2.y = interpolateHeight(pos2, k + 1, m + 1);
 
-				float3 n = cross(pos1 - pos, pos2 - pos);
+			float3 n = cross(pos1 - pos, pos2 - pos);
+			float4 color = lighting((pos + pos1 + pos2) / 3.0f, n);
 
-				float4 color = lighting((pos + pos1 + pos2) / 3.0f, n);
+			o.normal = n;
+			o.vertex = UnityObjectToClipPos(pos);
+			o.color = color;
+			o.projPos = ComputeScreenPos(o.vertex);
 
-				o.normal = n;
-				o.vertex = UnityObjectToClipPos(float4(pos, 1.0f));
-				o.color = color;
+			o1.normal = n;
+			o1.vertex = UnityObjectToClipPos(pos1);
+			o1.color = color;
+			o1.projPos = ComputeScreenPos(o1.vertex);
 
-				o1.normal = n;
-				o1.vertex = UnityObjectToClipPos(float4(pos1, 1.0f));
-				o1.color = color;
+			o2.normal = n;
+			o2.vertex = UnityObjectToClipPos(pos2);
+			o2.color = color;
+			o2.projPos = ComputeScreenPos(o2.vertex);
 
-				o2.normal = n;
-				o2.vertex = UnityObjectToClipPos(float4(pos2, 1.0f));
-				o2.color = color;
+			tristream.Append(o);
+			tristream.Append(o1);
+			tristream.Append(o2);
+			tristream.RestartStrip();
 
-				tristream.Append(o);
-				tristream.Append(o1);
-				tristream.Append(o2);
-				tristream.RestartStrip();
+			pos1.x = (k + 1) * g_fQuadSize;
+			pos1.z = m * g_fQuadSize;
+			pos1.x += g_RandomDisplacement[(k + 1) * g_iDepth + m].x;
+			pos1.z += g_RandomDisplacement[(k + 1) * g_iDepth + m].y;
+			pos1.y = interpolateHeight(pos1, k + 1, m);
 
-				color = lighting((pos + pos1 + pos2) / 3.0f, -n);
-				o.normal = -n;
-				o.color = color;
-				o1.normal = o.normal;
-				o1.color = color;
-				o2.normal = o.normal;
-				o2.color = color;
-				tristream.Append(o);
-				tristream.Append(o2);
-				tristream.Append(o1);
-				tristream.RestartStrip();
+			n = cross(pos2 - pos, pos1 - pos);
+			color = lighting((pos + pos1 + pos2) / 3.0f, n);
 
-				pos1.x = (k + 1) * g_fQuadSize;
-				pos1.z = m * g_fQuadSize;
-				pos1.x += g_RandomDisplacement[(k + 1) * g_iDepth + m].x;
-				pos1.z += g_RandomDisplacement[(k + 1) * g_iDepth + m].y;
-				pos1.y = interpolateHeight(pos1, k + 1, m);
+			o.normal = n;
+			o.color = color;
 
-				n = cross(pos2 - pos, pos1 - pos);
+			o1.normal = n;
+			o1.vertex = UnityObjectToClipPos(pos1);
+			o1.color = color;
+			o1.projPos = ComputeScreenPos(o1.vertex);
 
-				color = lighting((pos + pos1 + pos2) / 3.0f, n);
+			o2.normal = n;
+			o2.color = color;
 
-				o.normal = n;
-				o.vertex = UnityObjectToClipPos(float4(pos, 1.0f));
-				o.color = color;
 
-				o1.normal = n;
-				o1.vertex = UnityObjectToClipPos(float4(pos1, 1.0f));
-				o1.color = color;
-
-				o2.normal = n;
-				o2.color = color;
-
-				tristream.Append(o);
-				tristream.Append(o2);
-				tristream.Append(o1);
-				tristream.RestartStrip();
-
-				color = lighting((pos + pos1 + pos2) / 3.0f, -n);
-				o.normal = -n;
-				o.color = color;
-				o1.normal = o.normal;
-				o1.color = color;
-				o2.normal = o.normal;
-				o2.color = color;
-				tristream.Append(o);
-				tristream.Append(o1);
-				tristream.Append(o2);
-				tristream.RestartStrip();
-
-#endif
+			tristream.Append(o);
+			tristream.Append(o2);
+			tristream.Append(o1);
+			tristream.RestartStrip();
 		}
 
 		fixed4 frag(g2f i) : SV_Target
-		{
-			return i.color;
+		{ 
+			float sceneZ = LinearEyeDepth(tex2Dproj(_CameraDepthTexture, UNITY_PROJ_COORD(i.projPos)).r);
+			float partZ = i.projPos.z;
+			float diff = (abs(sceneZ - partZ)) / g_DepthVisible;
+			if (diff < 1.0f)
+				return float4(i.color.rgb + float3(-0.15f, 0.2f,0.1f), i.color.w - 0.1f);
+			else
+				return i.color;
 		}
 		ENDCG
 	}
