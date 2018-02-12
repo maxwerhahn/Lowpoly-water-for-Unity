@@ -8,7 +8,7 @@ Material:
   m_PrefabInternal: {fileID: 0}
   m_Name: mesh
   m_Shader: {fileID: 4800000, guid: 89b3e96f790e23645bd587a36de5027e, type: 3}
-  m_ShaderKeywords: G_DIRECTIONALLIGHT_ON _ALPHAPREMULTIPLY_ON _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
+  m_ShaderKeywords: _ALPHAPREMULTIPLY_ON _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
@@ -124,8 +124,8 @@ Material:
     - g_DepthVisible: 711
     - g_Glossiness: 0.5
     - g_Metallic: 0
-    - g_Shininess: 20
-    - g_directionalLight: 1
+    - g_Shininess: 108
+    - g_directionalLight: 0
     - g_fQuadSize: 8
     - g_iDepth: 128
     - g_iWidth: 256

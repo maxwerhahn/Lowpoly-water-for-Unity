@@ -32,10 +32,7 @@ Shader "Custom/HeightFieldRender" {
 		//#pragma surface surf Standard fullforwardshadows
 		// Use shader model 3.0 target, to get nicer looking lighting
 		#include "UnityCG.cginc"
-
-		float g_fQuadSize;
-		int g_iDepth;
-		int g_iWidth;
+		#include "Lighting.cginc"
 
 		float g_directionalLight;
 		float g_Attenuation;
@@ -43,9 +40,16 @@ Shader "Custom/HeightFieldRender" {
 		float g_DepthVisible;
 		fixed4 g_Color;
 		fixed4 g_SpecColor;
+
+		float g_fQuadSize;
+		int g_iDepth;
+		int g_iWidth;
+				
+		float g_SunIntensity;
 		fixed4 g_SunDir;
 		fixed4 g_SunColor;
 		fixed4 g_SunPos;
+
 		uniform sampler2D _CameraDepthTexture;
 
 		StructuredBuffer<float2> g_HeightField : register(t1);
@@ -89,19 +93,21 @@ Shader "Custom/HeightFieldRender" {
 			float3 normalDirection = normalize(mul(float4(normal, 1.0f), modelMatrixInverse).xyz);
 			float3 viewDirection = normalize(_WorldSpaceCameraPos - pos);
 			float3 lightDirection;
+			float attenuation = g_Attenuation;
 
-			if (g_directionalLight > 0.5f)
-				lightDirection = -normalize(g_SunDir.xyz);
-			else
+			if (g_directionalLight <= 0.5f)
+				lightDirection = normalize(_WorldSpaceLightPos0.xyz);
+			else {
 				lightDirection = normalize(-pos + g_SunPos.xyz);
-
+				attenuation = 1.0f / distance(pos, g_SunPos.xyz) * g_SunIntensity;
+			}
 			float3 ambientLighting = UNITY_LIGHTMODEL_AMBIENT.rgb * g_Color.rgb;
 
-			float3 diffuseReflection = g_Attenuation * g_SunColor.rgb * g_Color.rgb * max(0.0, dot(normalDirection, lightDirection));
+			float3 diffuseReflection = attenuation * _LightColor0.rgb * g_Color.rgb * max(0.0, dot(normalDirection, lightDirection));
 
 			float3 specularReflection;
 			if (dot(normalDirection, lightDirection) >= 0.0f)
-				specularReflection = g_Attenuation * g_SpecColor.rgb * g_SunColor.rgb * pow(max(0.0, dot(reflect(-lightDirection, normalDirection), viewDirection)), g_Shininess);
+				specularReflection = attenuation * g_SpecColor.rgb * _LightColor0.rgb * pow(max(0.0, dot(reflect(-lightDirection, normalDirection), viewDirection)), g_Shininess);
 			else
 				specularReflection = float3(0.0f, 0.0f, 0.0f);
 
@@ -221,7 +227,7 @@ Shader "Custom/HeightFieldRender" {
 			//	if an object is close -> change color
 			if (diff < g_DepthVisible && abs(normalize(i.normal).y) > 0.8f) {
 				diff /= g_DepthVisible;
-				return lerp(float4(max(i.color.rgb + float3(-0.3f, 0.25f, -0.05f), float3(0.0f, 0.0f, 0.0f)), i.color.w), i.color,  float4(diff, diff, diff, 1.0f));
+				return lerp(float4(max(i.color.rgb + float3(-0.2f, 0.2f, 0.05f), float3(0.0f, 0.0f, 0.0f)), i.color.w), i.color,  float4(diff, diff, diff, 1.0f));
 			}
 			else
 				return i.color;

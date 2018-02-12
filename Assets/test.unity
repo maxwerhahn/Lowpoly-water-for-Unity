@@ -366,15 +366,15 @@ MonoBehaviour:
   heightFieldCS: {fileID: 7200000, guid: 4953ade53a221db458950ff31d7297c6, type: 3}
   mainCam: {fileID: 1846956667}
   maxRandomDisplacement: 1
-  width: 128
-  depth: 128
-  quadSize: 32
-  speed: 5
+  width: 64
+  depth: 64
+  quadSize: 64
+  speed: 4
   gridSpacing: 1
-  maxHeight: 200
-  maxVelocity: 100
+  maxHeight: 300
+  maxVelocity: 150
   randomInitialVelocity: 5
-  dampingVelocity: 0.9996
+  dampingVelocity: 0.9999
 --- !u!4 &882867328
 Transform:
   m_ObjectHideFlags: 0
@@ -382,7 +382,7 @@ Transform:
   m_PrefabInternal: {fileID: 0}
   m_GameObject: {fileID: 882867325}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
-  m_LocalPosition: {x: -1415, y: 0, z: -1659}
+  m_LocalPosition: {x: -2950, y: 0, z: -1571}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
