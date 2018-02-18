@@ -1,4 +1,6 @@
 ﻿// Upgrade NOTE: replaced '_Object2World' with 'unity_ObjectToWorld'
+
+// Upgrade NOTE: replaced '_Object2World' with 'unity_ObjectToWorld'
 // Upgrade NOTE: replaced '_World2Object' with 'unity_WorldToObject'
 
 // Upgrade NOTE: replaced '_Object2World' with 'unity_ObjectToWorld'
@@ -9,30 +11,26 @@ Shader "Custom/HeightFieldRender" {
 	Properties{
 		g_Color("Color", Color) = (1,1,1,1)
 		g_SpecColor("Specular Color", Color) = (1,1,1,1)
+		g_DepthColor("Depth Color", Color) = (1,1,1,1)
 		g_Attenuation("Attenuation", Range(0.0, 1.0)) = 1.0
 		g_Shininess("Shininess", Range(0.0, 2000.0)) = 20.0
 		g_DepthVisible("maximum Depth", Range(50.0, 1000.0)) = 1000.0
+		_ReflectionTex("Internal Reflection", 2D) = "" {}
 		[Toggle] g_directionalLight("use directional light", Float) = 0
 	}
 		SubShader{
-		Tags { "Queue" = "Transparent" "RenderType" = "Transparent" }
+		Tags { "Queue" = "Transparent" "IgnoreProjector" = "True" "RenderType" = "TransparentCutout" }
 
 		ZWrite On
 		Cull Off
 		Blend SrcAlpha OneMinusSrcAlpha
 
-		Pass{
-		CGPROGRAM
+		CGINCLUDE
 
-		#pragma target 5.0
-		// Physically based Standard lighting model, and enable shadows on all light types
-		#pragma vertex vert
-		#pragma geometry geom
-		#pragma fragment frag
-		//#pragma surface surf Standard fullforwardshadows
-		// Use shader model 3.0 target, to get nicer looking lighting
 		#include "UnityCG.cginc"
+		#include "AutoLight.cginc"
 		#include "Lighting.cginc"
+
 
 		float g_directionalLight;
 		float g_Attenuation;
@@ -40,48 +38,57 @@ Shader "Custom/HeightFieldRender" {
 		float g_DepthVisible;
 		fixed4 g_Color;
 		fixed4 g_SpecColor;
+		fixed4 g_DepthColor;
 
 		float g_fQuadSize;
 		int g_iDepth;
 		int g_iWidth;
-				
+
 		float g_SunIntensity;
 		fixed4 g_SunDir;
 		fixed4 g_SunColor;
 		fixed4 g_SunPos;
 
 		uniform sampler2D _CameraDepthTexture;
+		sampler2D _ReflectionTex;
 
 		StructuredBuffer<float2> g_HeightField : register(t1);
 		StructuredBuffer<float2> g_RandomDisplacement : register(t2);
+
+		ENDCG
+
+			Pass{
+			Name "Forward"
+			Lighting On
+
+			Tags{ "LightMode" = "ForwardBase" }
+
+			CGPROGRAM
+
+			// Physically based Standard lighting model, and enable shadows on all light types
+#pragma vertex vert
+#pragma geometry geom
+#pragma fragment frag
+#pragma multi_compile_fwdbase 
+#pragma multi_compile_fwdadd_fullshadows
 
 		struct appdata {
 			float4 vertex : POSITION;
 			float3 normal : NORMAL;
 			float4 color : COLOR;
+			float4 uv : TEXCOORD0;
 		};
 
 		struct v2g
 		{
-			float4 vertex : SV_POSITION;
-			float3 normal : NORMAL;
-			float4 color : COLOR;
-		};
-
-		v2g vert(appdata v)
-		{
-			v2g o;
-			o.vertex = v.vertex;
-			o.color = g_Color;
-			o.normal = v.normal;
-			return o;
-		}
-
-		struct g2f {
 			float3 normal : NORMAL;
 			float4 vertex : SV_POSITION;
-			float4 color : COLOR;
-			float4 projPos : TEXCOORD0;
+			float4 lightingColor : COLOR0;
+			float4 ambientColor : COLOR1;
+			float4 uv : TEXCOORD0;
+			float4 projPos : TEXCOORD1;
+			float4 refl : TEXCOORD2;
+			SHADOW_COORDS(4)
 		};
 
 		//	specular lighting model
@@ -101,7 +108,6 @@ Shader "Custom/HeightFieldRender" {
 				lightDirection = normalize(-pos + g_SunPos.xyz);
 				attenuation = 1.0f / distance(pos, g_SunPos.xyz) * g_SunIntensity;
 			}
-			float3 ambientLighting = UNITY_LIGHTMODEL_AMBIENT.rgb * g_Color.rgb;
 
 			float3 diffuseReflection = attenuation * _LightColor0.rgb * g_Color.rgb * max(0.0, dot(normalDirection, lightDirection));
 
@@ -111,7 +117,7 @@ Shader "Custom/HeightFieldRender" {
 			else
 				specularReflection = float3(0.0f, 0.0f, 0.0f);
 
-			return float4(ambientLighting + specularReflection + diffuseReflection, g_Color.w);
+			return float4(specularReflection + diffuseReflection, g_Color.w);
 		}
 
 		float interpolateHeight(float3 pos, float k, float m) {
@@ -132,11 +138,8 @@ Shader "Custom/HeightFieldRender" {
 			return resultingHeight;
 		}
 
-		[maxvertexcount(6)]
-		void geom(point v2g p[1], inout TriangleStream<g2f> tristream)
-		{
-			//	create two triangles, using 6 vertices and calulating normals, color, clip and projected positions.
-			float3 pos = p[0].vertex.xyz;
+		float3 calculatePosition(float4 posIn) {
+			float3 pos = posIn.xyz;
 			int k, m = 0;
 			k = round(pos.x / g_fQuadSize);
 			m = round(pos.z / g_fQuadSize);
@@ -145,95 +148,101 @@ Shader "Custom/HeightFieldRender" {
 			pos.x += g_RandomDisplacement[(k)* g_iDepth + m].x;
 			pos.z += g_RandomDisplacement[(k)* g_iDepth + m].y;
 			pos.y = interpolateHeight(pos, k, m);
+			return pos;
+		}
 
-			g2f o;
-			g2f o1;
-			g2f o2;
+		v2g vert(appdata v)
+		{
+			v2g o;
+			float3 pos = calculatePosition(v.vertex);
+			o.vertex = v.vertex;
+			o.lightingColor = g_Color;
+			o.normal = v.normal;
+			o.uv = v.uv;
+			o.projPos = ComputeScreenPos(UnityObjectToClipPos(pos));
+			o.projPos.z = -mul(UNITY_MATRIX_MV, float4(pos, 1.0f)).z;
+			TRANSFER_SHADOW(o);
+			return o;
+		}
 
-			float3 pos1 = pos;
-			pos1.z = (m + 1) * g_fQuadSize;
-			pos1.x = (k)* g_fQuadSize;
-			pos1.x += g_RandomDisplacement[k * g_iDepth + m + 1].x;
-			pos1.z += g_RandomDisplacement[k * g_iDepth + m + 1].y;
-			pos1.y = interpolateHeight(pos1, k, m + 1);
+		float3 calculateReflectionVector(float4 pos, float3 normal) {
+			float3 worldPos = mul(unity_ObjectToWorld, pos).xyz;
+			float3 worldViewDir = normalize(UnityWorldSpaceViewDir(worldPos));
+			float3 worldNormal = UnityObjectToWorldNormal(normal);
+			return reflect(-worldViewDir, worldNormal);
+		}
 
-			float3 pos2 = pos;
-			pos2.z = (m + 1) * g_fQuadSize;
-			pos2.x = (k + 1) * g_fQuadSize;
-			pos2.x += g_RandomDisplacement[(k + 1) * g_iDepth + m + 1].x;
-			pos2.z += g_RandomDisplacement[(k + 1) * g_iDepth + m + 1].y;
-			pos2.y = interpolateHeight(pos2, k + 1, m + 1);
+		[maxvertexcount(3)]
+		void geom(triangle v2g p[3], inout TriangleStream<v2g> tristream)
+		{
+			//	create two triangles, using 6 vertices and calulating normals, color, clip and projected positions.
+			float3 pos = calculatePosition(p[0].vertex);
+			float3 pos1 = calculatePosition(p[1].vertex);
+			float3 pos2 = calculatePosition(p[2].vertex);
+
+			v2g o = p[0];
+			v2g o1 = p[1];
+			v2g o2 = p[2];
 
 			float3 n = cross(pos1 - pos, pos2 - pos);
 			float4 color = lighting((pos + pos1 + pos2) / 3.0f, n);
+			float4 ambientLighting = float4(UNITY_LIGHTMODEL_AMBIENT.rgb * g_Color.rgb,1.0f);
 
 			o.normal = n;
 			o.vertex = UnityObjectToClipPos(pos);
-			o.color = color;
+			o.lightingColor = color;
+			o.ambientColor = ambientLighting;
 			o.projPos = ComputeScreenPos(o.vertex);
-			o.projPos.z = -mul(UNITY_MATRIX_MV, float4(pos,1.0f)).z;
+			o.projPos.z = -mul(UNITY_MATRIX_MV, float4(pos, 1.0f)).z;
+			o.refl = ComputeNonStereoScreenPos(o.vertex);
 
 			o1.normal = n;
 			o1.vertex = UnityObjectToClipPos(pos1);
-			o1.color = color;
+			o1.lightingColor = color;
+			o1.ambientColor = ambientLighting;
 			o1.projPos = ComputeScreenPos(o1.vertex);
-			o1.projPos.z = -mul(UNITY_MATRIX_MV, float4(pos1, 1.0f)).z;
+			o1.projPos.z = -mul(UNITY_MATRIX_MV, float4(pos1,1.0f)).z;
+			o1.refl = ComputeNonStereoScreenPos(o1.vertex);
 
 			o2.normal = n;
 			o2.vertex = UnityObjectToClipPos(pos2);
-			o2.color = color;
+			o2.lightingColor = color;
+			o2.ambientColor = ambientLighting;
 			o2.projPos = ComputeScreenPos(o2.vertex);
-			o2.projPos.z = -mul(UNITY_MATRIX_MV, float4(pos2, 1.0f)).z;
+			o2.projPos.z = -mul(UNITY_MATRIX_MV, float4(pos2,1.0f)).z;
+			o2.refl = ComputeNonStereoScreenPos(o2.vertex);
 
+			TRANSFER_SHADOW(o);
+			TRANSFER_SHADOW(o1);
+			TRANSFER_SHADOW(o2);
 			tristream.Append(o);
 			tristream.Append(o1);
 			tristream.Append(o2);
-			tristream.RestartStrip();
-
-			pos1.x = (k + 1) * g_fQuadSize;
-			pos1.z = m * g_fQuadSize;
-			pos1.x += g_RandomDisplacement[(k + 1) * g_iDepth + m].x;
-			pos1.z += g_RandomDisplacement[(k + 1) * g_iDepth + m].y;
-			pos1.y = interpolateHeight(pos1, k + 1, m);
-
-			n = cross(pos2 - pos, pos1 - pos);
-			color = lighting((pos + pos1 + pos2) / 3.0f, n);
-
-			o.normal = n;
-			o.color = color;
-
-			o1.normal = n;
-			o1.vertex = UnityObjectToClipPos(pos1);
-			o1.color = color;
-			o1.projPos = ComputeScreenPos(o1.vertex);
-			o1.projPos.z = -mul(UNITY_MATRIX_MV, float4(pos1, 1.0f)).z;
-
-			o2.normal = n;
-			o2.color = color;
-
-			tristream.Append(o);
-			tristream.Append(o2);
-			tristream.Append(o1);
 			tristream.RestartStrip();
 		}
 
-		fixed4 frag(g2f i) : SV_Target
+		fixed4 frag(v2g i) : SV_Target
 		{
 			//	load stored z-value
+			fixed shadow = SHADOW_ATTENUATION(i);
 			float depth = i.projPos.z;
 			float sceneZ = LinearEyeDepth(tex2Dproj(_CameraDepthTexture, UNITY_PROJ_COORD(i.projPos)));
 			float diff = (abs(sceneZ - depth));
 
 			//	if an object is close -> change color
-			if (diff < g_DepthVisible && abs(normalize(i.normal).y) > 0.8f) {
-				diff /= g_DepthVisible;
-				return lerp(float4(max(i.color.rgb + float3(-0.2f, 0.2f, 0.05f), float3(0.0f, 0.0f, 0.0f)), i.color.w), i.color,  float4(diff, diff, diff, 1.0f));
+				if (diff < 20)
+					return float4(1.0f, 1.0f, 1.0f, 1.0f) + i.ambientColor;
+				if (diff < g_DepthVisible) {
+					diff /= g_DepthVisible;
+					return lerp(g_DepthColor, i.lightingColor,  float4(diff, diff, diff, 1.0f)) + i.ambientColor;
+				}
+
+				float4 uv1 = i.refl;
+				float4 refl = tex2Dproj(_ReflectionTex, UNITY_PROJ_COORD(uv1));
+				return refl * 0.2f + 0.8f * i.lightingColor + i.ambientColor;
 			}
-			else
-				return i.color;
-	}
-	ENDCG
-}
-	}
-		Fallback "Specular"
+				ENDCG
+			}
+		}
+			Fallback "VertexLit"
 }
