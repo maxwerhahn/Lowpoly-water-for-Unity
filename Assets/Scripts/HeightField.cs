@@ -33,31 +33,33 @@ public class HeightField : MonoBehaviour
     //  private variables
     private ComputeBuffer heightFieldCB;
     private ComputeBuffer heightFieldCBOut;
+    private ComputeBuffer verticesCB;
 
     private Vector2[] randomDisplacement;
     private float lastMaxRandomDisplacement;
 
     private heightField[] hf;
     private int kernel;                     ///   kernel for computeshader
+    private int kernelVertices;
 
     void Start()
     {
         mainCam.depthTextureMode = DepthTextureMode.Depth;
 
         initHeightField();
+        setRandomDisplacementBuffer();
         CreateMesh();
 
         //  initialize buffers
         heightFieldCB = new ComputeBuffer(width * depth, 8);
         heightFieldCBOut = new ComputeBuffer(width * depth, 8);
+        verticesCB = new ComputeBuffer(width * depth, 12);
 
         heightFieldCB.SetData(hf);
 
         //  get corresponding kernel index
         kernel = heightFieldCS.FindKernel("updateHeightfield");
-
-        setRandomDisplacementBuffer();
-
+        kernelVertices = heightFieldCS.FindKernel("interpolateVertices");
         //  set constants
         heightFieldCS.SetFloat("g_fQuadSize", quadSize);
         heightFieldCS.SetInt("g_iDepth", depth);
@@ -130,6 +132,22 @@ public class HeightField : MonoBehaviour
         Shader.SetGlobalBuffer("g_HeightField", heightFieldCBOut);
     }
 
+    void updateVertices()
+    {
+        Mesh mesh = GetComponent<MeshFilter>().mesh;
+        Vector3[] verts = mesh.vertices;
+        
+        verticesCB.SetData(verts);
+        heightFieldCS.SetBuffer(kernelVertices, "heightFieldIn", heightFieldCB);
+        heightFieldCS.SetBuffer(kernelVertices, "verticesPosition", verticesCB);
+
+        heightFieldCS.Dispatch(kernelVertices, Mathf.CeilToInt(verts.Length / 256), 1, 1);
+        verticesCB.GetData(verts);
+
+        mesh.vertices = verts;
+        GetComponent<MeshFilter>().mesh = mesh;
+    }
+
     //  creates mesh without flat shading
     void CreateMesh()
     {
@@ -146,9 +164,9 @@ public class HeightField : MonoBehaviour
             for (int j = 0; j < depth; j++)
             {
                 if (i != 0 && j != 0 && i != width - 1 && j != depth - 1)
-                    newVertices[i * depth + j] = new Vector3(i * quadSize + Random.Range(-quadSize / 3f, quadSize / 3f), hf[i * depth + j].height, j * quadSize + Random.Range(-quadSize / 3f, quadSize / 3f));
+                    newVertices[i * depth + j] = new Vector3(i * quadSize + randomDisplacement[i * depth + j].x, 0.0f, j * quadSize + randomDisplacement[i * depth + j].y);
                 else
-                    newVertices[i * depth + j] = new Vector3(i * quadSize, hf[i * depth + j].height, j * quadSize);
+                    newVertices[i * depth + j] = new Vector3(i * quadSize, 0.0f, j * quadSize);
             }
         }
         //  initialize texture coordinates
@@ -189,13 +207,14 @@ public class HeightField : MonoBehaviour
     {
         //  update heightfield and vertices
         updateHeightfield();
+        updateVertices();
 
         //  if noisy factor change -> initialize randomDisplacements again
         if (!Mathf.Approximately(maxRandomDisplacement, lastMaxRandomDisplacement))
         {
             setRandomDisplacementBuffer();
         }
-        
+
         Shader.SetGlobalVector("g_SunDir", RenderSettings.sun.transform.forward);
         Shader.SetGlobalVector("g_SunPos", RenderSettings.sun.transform.position);
         Shader.SetGlobalVector("g_SunColor", RenderSettings.sun.color);
