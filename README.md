@@ -8,7 +8,7 @@ To come:
            [ ] interactive water(?)  
           
 ## Preview ##
-![Alt Text](https://github.com/sc2insane/Lowpoly-water-for-Unity/raw/master/Gifs/lowpolywater.gif)
+![Alt Text](https://github.com/sc2insane/Lowpoly-water-for-Unity/raw/dev/Gifs/lowpolywater.gif)
 
 Currently Possible:  
           * add random noise to vertices positions  
