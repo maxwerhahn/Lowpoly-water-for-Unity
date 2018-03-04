@@ -21,6 +21,7 @@ RWStructuredBuffer<HeightField> heightFieldOut : register(u0);
 StructuredBuffer<HeightField> heightFieldIn : register(t0);
 
 RWStructuredBuffer<float3> verticesPosition : register(u1);
+StructuredBuffer<float2> randomDisplacement : register(t1);
 
 [numthreads(16, 16, 1)]
 void updateHeightfield(uint3 id : SV_DispatchThreadID)
@@ -64,11 +65,15 @@ void updateHeightfield(uint3 id : SV_DispatchThreadID)
 
 [numthreads(256, 1, 1)]
 void interpolateVertices(uint3 id : SV_DispatchThreadID) {
-	int i = id.x;
+	uint i = id.x;
 	float3 pos = verticesPosition[i];
-	int k, m = 0;
-	k = (int)(pos.x / g_fQuadSize);
-	m = (int)(pos.z / g_fQuadSize);
+	uint k, m = 0;
+	k = round(pos.x / g_fQuadSize);
+	m = round(pos.z / g_fQuadSize);
+	pos.x = k * g_fQuadSize;
+	pos.z = m * g_fQuadSize;
+	pos.x += randomDisplacement[k * g_iDepth + m].x;
+	pos.z += randomDisplacement[k * g_iDepth + m].y;
 
 	//	get surrounding height values at the vertex position (can be randomly displaced)
 	float x1 = heightFieldIn[k * g_iDepth + m].height;
@@ -79,11 +84,10 @@ void interpolateVertices(uint3 id : SV_DispatchThreadID) {
 	//	get x and y value between 0 and 1 for interpolation
 	float x = (pos.x / g_fQuadSize - k);
 	float y = (pos.z / g_fQuadSize - m);
-	float res = (x1 * (1 - x) + x4 * (x)) * (1 - y) + (x3 * (1 - x) + x2 * (x)) * (y);
-	verticesPosition[i].y = res;
 
 	//	bilinear interpolation to get height at vertex i
 	//	note if x == 0 and y == 0 vertex position is at heightfield position.
 	float resultingHeight = (x1 * (1 - x) + x4 * (x)) * (1 - y) + (x3 * (1 - x) + x2 * (x)) * (y);
-	verticesPosition[i].y = resultingHeight;
+	pos.y = resultingHeight;
+	verticesPosition[i] = pos;
 }

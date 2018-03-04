@@ -5,6 +5,7 @@ using System;
 
 public class HeightField : MonoBehaviour
 {
+    [ExecuteInEditMode]
     struct heightField
     {
         public float height;
@@ -57,53 +58,11 @@ public class HeightField : MonoBehaviour
     {
         mainCam.depthTextureMode = DepthTextureMode.Depth;
 
-        newMesh = GetComponent<MeshFilter>().mesh;
-        Vector3[] planeVertices = new Vector3[4];
-        Vector3[] planeNormals = new Vector3[4];
-        int[] planeTriangles = new int[6];
-        planeVertices[0] = new Vector3();
-        planeVertices[1] = new Vector3(quadSize * (depth - 1), 0, quadSize * (width - 1));
-        planeVertices[2] = new Vector3(quadSize * (depth - 1), 0, 0);
-        planeVertices[3] = new Vector3(0, 0, quadSize * (width - 1));
-        planeNormals[0] = Vector3.up;
-        planeNormals[1] = Vector3.up;
-        planeNormals[2] = Vector3.up;
-        planeNormals[3] = Vector3.up;
-        planeTriangles[0] = 0;
-        planeTriangles[1] = 2;
-        planeTriangles[2] = 1;
-        planeTriangles[3] = 0;
-        planeTriangles[4] = 1;
-        planeTriangles[5] = 3;
-        newMesh.triangles = planeTriangles;
-        newMesh.vertices = planeVertices;
-        newMesh.normals = planeNormals;
-
+        CreatePlaneMesh();
         initHeightField();
         setRandomDisplacementBuffer();
         CreateMesh();
-
-        //  initialize buffers
-        heightFieldCB = new ComputeBuffer(width * depth, 8);
-        heightFieldCBOut = new ComputeBuffer(width * depth, 8);
-        verticesCB = new ComputeBuffer(width * depth, 12);
-
-        heightFieldCB.SetData(hf);
-
-        //  get corresponding kernel index
-        kernel = heightFieldCS.FindKernel("updateHeightfield");
-        kernelVertices = heightFieldCS.FindKernel("interpolateVertices");
-        //  set constants
-        heightFieldCS.SetFloat("g_fQuadSize", quadSize);
-        heightFieldCS.SetInt("g_iDepth", depth);
-        heightFieldCS.SetInt("g_iWidth", width);
-        heightFieldCS.SetFloat("g_fGridSpacing", gridSpacing); // could be changed to quadSize, but does not yield good results
-
-        Shader.SetGlobalFloat("g_fQuadSize", quadSize);
-        Shader.SetGlobalInt("g_iDepth", depth);
-        Shader.SetGlobalInt("g_iWidth", width);
-
-        QualitySettings.pixelLightCount = 0;
+        initBuffers();
     }
 
     public void OnWillRenderObject()
@@ -169,11 +128,10 @@ public class HeightField : MonoBehaviour
         randomDisplacement = new Vector2[width * depth];
         for (int i = 0; i < randomDisplacement.Length; i++)
         {
-            randomDisplacement[i] = new Vector2(UnityEngine.Random.Range(-maxRandomDisplacement * quadSize / 3.5f, maxRandomDisplacement * quadSize / 3.5f),
-                UnityEngine.Random.Range(-maxRandomDisplacement * quadSize / 3.5f, maxRandomDisplacement * quadSize / 3.5f));
+            randomDisplacement[i] = new Vector2(UnityEngine.Random.Range(-maxRandomDisplacement * quadSize / 3.0f, maxRandomDisplacement * quadSize / 3.0f),
+                UnityEngine.Random.Range(-maxRandomDisplacement * quadSize / 3.0f, maxRandomDisplacement * quadSize / 3.0f));
         }
         randomXZ.SetData(randomDisplacement);
-        Shader.SetGlobalBuffer("g_RandomDisplacement", randomXZ);
         lastMaxRandomDisplacement = maxRandomDisplacement;
     }
 
@@ -206,6 +164,30 @@ public class HeightField : MonoBehaviour
         }
     }
 
+    void initBuffers()
+    {
+
+        //  initialize buffers
+        heightFieldCB = new ComputeBuffer(width * depth, 8);
+        heightFieldCBOut = new ComputeBuffer(width * depth, 8);
+        verticesCB = new ComputeBuffer(width * depth, 12);
+
+        heightFieldCB.SetData(hf);
+
+        //  get corresponding kernel index
+        kernel = heightFieldCS.FindKernel("updateHeightfield");
+        kernelVertices = heightFieldCS.FindKernel("interpolateVertices");
+        //  set constants
+        heightFieldCS.SetFloat("g_fQuadSize", quadSize);
+        heightFieldCS.SetInt("g_iDepth", depth);
+        heightFieldCS.SetInt("g_iWidth", width);
+        heightFieldCS.SetFloat("g_fGridSpacing", gridSpacing); // could be changed to quadSize, but does not yield good results
+
+        Shader.SetGlobalFloat("g_fQuadSize", quadSize);
+        Shader.SetGlobalInt("g_iDepth", depth);
+        Shader.SetGlobalInt("g_iWidth", width);
+    }
+
     //  dispatch of compute shader
     void updateHeightfield()
     {
@@ -216,7 +198,7 @@ public class HeightField : MonoBehaviour
             currentAvgHeight += hf[i].height;
         }
         currentAvgHeight /= hf.Length;
-
+        
         heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
         heightFieldCS.SetBuffer(kernel, "heightFieldOut", heightFieldCBOut);
 
@@ -238,14 +220,19 @@ public class HeightField : MonoBehaviour
         Mesh mesh = GetComponent<MeshFilter>().mesh;
         Vector3[] verts = mesh.vertices;
 
+
+        ComputeBuffer randomXZ = new ComputeBuffer(width * depth, 8);
+        randomXZ.SetData(randomDisplacement);
         verticesCB.SetData(verts);
         heightFieldCS.SetBuffer(kernelVertices, "heightFieldIn", heightFieldCB);
         heightFieldCS.SetBuffer(kernelVertices, "verticesPosition", verticesCB);
+        heightFieldCS.SetBuffer(kernelVertices, "randomDisplacement", randomXZ);
 
         heightFieldCS.Dispatch(kernelVertices, Mathf.CeilToInt(verts.Length / 256), 1, 1);
         verticesCB.GetData(verts);
 
         mesh.vertices = verts;
+        //mesh.RecalculateNormals();
         GetComponent<MeshFilter>().mesh = mesh;
     }
 
@@ -302,7 +289,34 @@ public class HeightField : MonoBehaviour
         mesh.triangles = newTriangles;
         mesh.uv = newUV;
 
+        mesh.RecalculateNormals();
         GetComponent<MeshFilter>().mesh = mesh;
+    }
+
+    void CreatePlaneMesh()
+    {
+        newMesh = GetComponent<MeshFilter>().mesh;
+        //  create plane mesh for reflection
+        Vector3[] planeVertices = new Vector3[4];
+        Vector3[] planeNormals = new Vector3[4];
+        int[] planeTriangles = new int[6];
+        planeVertices[0] = new Vector3();
+        planeVertices[1] = new Vector3(quadSize * (depth - 1), 0, quadSize * (width - 1));
+        planeVertices[2] = new Vector3(quadSize * (depth - 1), 0, 0);
+        planeVertices[3] = new Vector3(0, 0, quadSize * (width - 1));
+        planeNormals[0] = Vector3.up;
+        planeNormals[1] = Vector3.up;
+        planeNormals[2] = Vector3.up;
+        planeNormals[3] = Vector3.up;
+        planeTriangles[0] = 0;
+        planeTriangles[1] = 2;
+        planeTriangles[2] = 1;
+        planeTriangles[3] = 0;
+        planeTriangles[4] = 1;
+        planeTriangles[5] = 3;
+        newMesh.vertices = planeVertices;
+        newMesh.triangles = planeTriangles;
+        newMesh.normals = planeNormals;
     }
 
     void Update()
@@ -322,10 +336,16 @@ public class HeightField : MonoBehaviour
             setRandomDisplacementBuffer();
         }
 
-        Shader.SetGlobalVector("g_SunDir", RenderSettings.sun.transform.forward);
-        Shader.SetGlobalVector("g_SunPos", RenderSettings.sun.transform.position);
-        Shader.SetGlobalVector("g_SunColor", RenderSettings.sun.color);
-        Shader.SetGlobalFloat("g_SunIntensity", RenderSettings.sun.intensity);
+        Light sun = RenderSettings.sun;
+        if (RenderSettings.sun.gameObject.activeSelf)
+        {
+            Shader.SetGlobalFloat("g_SunIntensity", sun.intensity);
+            Shader.SetGlobalVector("g_SunDir", sun.transform.forward);
+            Shader.SetGlobalVector("g_SunPos", sun.transform.position);
+            Shader.SetGlobalVector("g_SunColor", sun.color);
+        }
+        else
+            Shader.SetGlobalFloat("g_SunIntensity", 0.0f);
     }
 
     void UpdateCameraModes(Camera src, Camera dest)
@@ -361,8 +381,7 @@ public class HeightField : MonoBehaviour
         dest.aspect = src.aspect;
         dest.orthographicSize = src.orthographicSize;
     }
-
-
+    
     // On-demand create any objects we need for water
     void CreateWaterObjects(Camera currentCamera, out Camera reflectionCamera)
     {
