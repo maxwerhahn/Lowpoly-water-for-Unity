@@ -126,7 +126,7 @@ Material:
     - g_FoamDepth: 0.111
     - g_Glossiness: 0.5
     - g_Metallic: 0
-    - g_PointLightIntensity: 1
+    - g_PointLightIntensity: 0
     - g_Reflection: 0.222
     - g_Shininess: 98
     - g_directionalLight: 0

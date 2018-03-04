@@ -106,10 +106,10 @@ Shader "Custom/HeightFieldRender" {
 			//	pass for directional lights
 		Pass {
 			ZWrite Off
-			Cull Off
-			Blend SrcAlpha OneMinusSrcAlpha
+				Cull Off
+				Blend SrcAlpha OneMinusSrcAlpha
 
-			Tags{ "LightMode" = "ForwardBase" }
+				Tags{ "LightMode" = "ForwardBase" }
 				CGPROGRAM
 				//	only ambient lighting for the directional light
 				#pragma multi_compile_fwdbase 
@@ -144,7 +144,22 @@ Shader "Custom/HeightFieldRender" {
 				else
 					specularReflection = float3(0.0f, 0.0f, 0.0f);
 
-				return float4(specularReflection + diffuseReflection + UNITY_LIGHTMODEL_AMBIENT.rgb * g_Color.rgb, g_Color.w);
+				for (int index = 0; index < 4; index++)
+				{
+					float4 lightPosition = float4(unity_4LightPosX0[index],
+						unity_4LightPosY0[index],
+						unity_4LightPosZ0[index], 1.0);
+
+					float3 dist = lightPosition.xyz - pos;
+					float3 dir = normalize(dist);
+					float squaredDistance =	dot(dist, dist);
+					float att = attenuation / (1.0 + unity_4LightAtten0[index] * squaredDistance);
+					diffuseReflection = (diffuseReflection + att * unity_LightColor[index].rgb * g_Color.rgb * max(0.0, dot(normalDirection, dir)));
+
+					if (dot(normalDirection, lightDirection) > 0.0f)
+						specularReflection = (specularReflection + att * g_SpecColor.rgb * unity_LightColor[index].rgb * pow(max(0.0, dot(reflect(-dir, normalDirection), viewDirection)), g_Shininess));
+				}
+				return float4(specularReflection + diffuseReflection, g_Color.w);
 			}
 				[maxvertexcount(3)]
 			void geom(triangle v2g p[3], inout TriangleStream<v2g> tristream)
@@ -189,7 +204,7 @@ Shader "Custom/HeightFieldRender" {
 				ENDCG
 		}
 	
-
+			/*
 		//	pass for point lights
 		Pass {
 			Tags{ "LightMode" = "ForwardAdd" }
@@ -267,7 +282,7 @@ Shader "Custom/HeightFieldRender" {
 				tristream.RestartStrip();
 			}
 			ENDCG
-			}
+			}*/
 		}
 		Fallback "VertexLit"
 }
