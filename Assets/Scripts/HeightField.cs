@@ -334,18 +334,7 @@ public class HeightField : MonoBehaviour
         if (!Mathf.Approximately(maxRandomDisplacement, lastMaxRandomDisplacement))
         {
             setRandomDisplacementBuffer();
-        }
-
-        Light sun = RenderSettings.sun;
-        if (RenderSettings.sun.gameObject.activeSelf)
-        {
-            Shader.SetGlobalFloat("g_SunIntensity", sun.intensity);
-            Shader.SetGlobalVector("g_SunDir", sun.transform.forward);
-            Shader.SetGlobalVector("g_SunPos", sun.transform.position);
-            Shader.SetGlobalVector("g_SunColor", sun.color);
-        }
-        else
-            Shader.SetGlobalFloat("g_SunIntensity", 0.0f);
+        }        
     }
 
     void UpdateCameraModes(Camera src, Camera dest)
