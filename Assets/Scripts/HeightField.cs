@@ -56,8 +56,7 @@ public class HeightField : MonoBehaviour
     private int m_OldReflectionTextureSize;
     private Mesh newMesh;
 
-    public uint currentCollision;
-    public bool updatedEnvironment;
+    private uint currentCollision;
 
     void Start()
     {
@@ -70,7 +69,6 @@ public class HeightField : MonoBehaviour
         initBuffers();
 
         currentCollision = 1;
-        updatedEnvironment = false;
     }
 
     void Update()
@@ -159,7 +157,7 @@ public class HeightField : MonoBehaviour
 
     public void OnCollisionStay(Collision collision)
     {
-        //environment = new uint[width * depth];
+        environment = new uint[width * depth];
         for (int i = 0; i < collision.contacts.Length; i++)
         {
             Vector3 coll = collision.contacts[i].point - transform.position;
@@ -199,7 +197,7 @@ public class HeightField : MonoBehaviour
             }
         }
         reflectWavesCB.SetData(environment);
-        currentCollision++;
+        currentCollision = (currentCollision + 1) % int.MaxValue;
     }
 
     void setRandomDisplacementBuffer()

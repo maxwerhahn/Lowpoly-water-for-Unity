@@ -288,13 +288,13 @@ MonoBehaviour:
   heightFieldCS: {fileID: 7200000, guid: 4953ade53a221db458950ff31d7297c6, type: 3}
   mainCam: {fileID: 1846956667}
   maxRandomDisplacement: 1
-  width: 128
-  depth: 128
+  width: 32
+  depth: 32
   quadSize: 128
-  speed: 5
+  speed: 4
   gridSpacing: 1
-  maxHeight: 512
-  maxVelocity: 250
+  maxHeight: 256
+  maxVelocity: 256
   randomInitialVelocity: 20
   dampingVelocity: 0.9999
   textureSize: 1024
@@ -487,7 +487,7 @@ Light:
   m_RenderMode: 1
   m_CullingMask:
     serializedVersion: 2
-    m_Bits: 16
+    m_Bits: 4294967295
   m_Lightmapping: 4
   m_AreaSize: {x: 1, y: 1}
   m_BounceIntensity: 1
