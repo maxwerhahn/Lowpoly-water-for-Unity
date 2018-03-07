@@ -111,7 +111,7 @@ Shader "Custom/HeightFieldRender" {
 
 				Tags{ "LightMode" = "ForwardBase" }
 				CGPROGRAM
-				//	only ambient lighting for the directional light
+
 				#pragma multi_compile_fwdbase 
 				#pragma vertex vert
 				#pragma geometry geom
@@ -144,6 +144,7 @@ Shader "Custom/HeightFieldRender" {
 				else
 					specularReflection = float3(0.0f, 0.0f, 0.0f);
 
+				//	add vertex lighting (4 non-important vertex lights)
 				for (int index = 0; index < 4; index++)
 				{
 					float4 lightPosition = float4(unity_4LightPosX0[index],
@@ -202,87 +203,7 @@ Shader "Custom/HeightFieldRender" {
 				tristream.RestartStrip();
 			}
 				ENDCG
-		}
-	
-			/*
-		//	pass for point lights
-		Pass {
-			Tags{ "LightMode" = "ForwardAdd" }
-				ZWrite Off
-				Cull Off
-				Blend SrcAlpha OneMinusSrcAlpha
-				BlendOp Max
-
-				CGPROGRAM
-				#pragma vertex vert
-				#pragma geometry geomP
-				#pragma fragment frag
-
-				//	specular lighting model
-				float4 lighting(float3 centerPos, float3 normal) {
-				float4x4 modelMatrix = unity_ObjectToWorld;
-				float4x4 modelMatrixInverse = unity_WorldToObject;
-				float3 pos = mul(modelMatrix, float4(centerPos, 1.0f)).xyz;
-
-				float3 normalDirection = normalize(mul(float4(normal, 1.0f), modelMatrixInverse).xyz);
-				float3 viewDirection = normalize(_WorldSpaceCameraPos - pos);
-				float3 lightDirection;
-				float attenuation = g_Attenuation;
-
-				if (_WorldSpaceLightPos0.w == 0.0f)
-					lightDirection = normalize(_WorldSpaceLightPos0.xyz);
-				else {
-					float3 direction = _WorldSpaceLightPos0.xyz - pos;
-					lightDirection = normalize(direction);
-					attenuation /= length(direction);
-				}
-
-				float3 diffuseReflection = attenuation * _LightColor0.rgb * g_Color.rgb * max(0.0, dot(normalDirection, lightDirection));
-
-				float3 specularReflection = attenuation * g_SpecColor.rgb * _LightColor0.rgb * pow(max(0.0, dot(reflect(-lightDirection, normalDirection), viewDirection)), g_Shininess/2.0f);
-
-				return float4((specularReflection + diffuseReflection) * g_PointLightIntensity, g_Color.w);
-			}
-			
-			[maxvertexcount(3)]
-			void geomP(triangle v2g p[3], inout TriangleStream<v2g> tristream)
-			{
-				//	create two triangles, using 6 vertices and calulating normals, color, clip and projected positions.
-				float3 pos = (p[0].vertex);
-				float3 pos1 = (p[1].vertex);
-				float3 pos2 = (p[2].vertex);
-
-				v2g o = p[0];
-				v2g o1 = p[1];
-				v2g o2 = p[2];
-
-				float3 n = normalize(cross(pos1 - pos, pos2 - pos));
-				float3 avgPos = (pos + pos1 + pos2) / 3.0f;
-				float4 color = lighting(avgPos, n);
-				float4 reflPos = ComputeNonStereoScreenPos(UnityObjectToClipPos(avgPos));
-
-				o.vertex = UnityObjectToClipPos(pos);
-				o.lightingColor = color;
-				o.normal = n;
-				o.refl = ComputeNonStereoScreenPos(o.vertex);
-
-				o1.vertex = UnityObjectToClipPos(pos1);
-				o1.lightingColor = color;
-				o1.normal = n;
-				o1.refl = ComputeNonStereoScreenPos(o1.vertex);
-
-				o2.vertex = UnityObjectToClipPos(pos2);
-				o2.lightingColor = color;
-				o2.normal = n;
-				o2.refl = ComputeNonStereoScreenPos(o2.vertex);
-
-				tristream.Append(o);
-				tristream.Append(o1);
-				tristream.Append(o2);
-				tristream.RestartStrip();
-			}
-			ENDCG
-			}*/
+			}			
 		}
 		Fallback "VertexLit"
 }

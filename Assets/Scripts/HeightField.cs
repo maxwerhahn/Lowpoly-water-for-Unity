@@ -38,6 +38,7 @@ public class HeightField : MonoBehaviour
 
     //  private variables
     private ComputeBuffer heightFieldCB;
+    private ComputeBuffer reflectWavesCB;
     private ComputeBuffer heightFieldCBOut;
     private ComputeBuffer verticesCB;
 
@@ -45,6 +46,7 @@ public class HeightField : MonoBehaviour
     private float lastMaxRandomDisplacement;
 
     private heightField[] hf;
+    private uint[] environment;
     private int kernel;                     ///   kernel for computeshader
     private int kernelVertices;
 
@@ -53,6 +55,9 @@ public class HeightField : MonoBehaviour
 
     private int m_OldReflectionTextureSize;
     private Mesh newMesh;
+
+    public uint currentCollision;
+    public bool updatedEnvironment;
 
     void Start()
     {
@@ -63,6 +68,27 @@ public class HeightField : MonoBehaviour
         setRandomDisplacementBuffer();
         CreateMesh();
         initBuffers();
+
+        currentCollision = 1;
+        updatedEnvironment = false;
+    }
+
+    void Update()
+    {
+        //  update heightfield and vertices
+        updateHeightfield();
+        updateVertices();
+
+        if (!GetComponent<Renderer>())
+        {
+            return;
+        }
+
+        //  if noisy factor change -> initialize randomDisplacements again
+        if (!Mathf.Approximately(maxRandomDisplacement, lastMaxRandomDisplacement))
+        {
+            setRandomDisplacementBuffer();
+        }
     }
 
     public void OnWillRenderObject()
@@ -122,6 +148,60 @@ public class HeightField : MonoBehaviour
         GetComponent<MeshFilter>().mesh = oldMesh;
     }
 
+    void OnDisable()
+    {
+        foreach (var kvp in m_ReflectionCameras)
+        {
+            DestroyImmediate((kvp.Value).gameObject);
+        }
+        m_ReflectionCameras.Clear();
+    }
+
+    public void OnCollisionStay(Collision collision)
+    {
+        //environment = new uint[width * depth];
+        for (int i = 0; i < collision.contacts.Length; i++)
+        {
+            Vector3 coll = collision.contacts[i].point - transform.position;
+            int x = Math.Min(Math.Max(Mathf.RoundToInt(coll.x / quadSize), 0), width - 1);
+            int z = Math.Min(Math.Max(Mathf.RoundToInt(coll.z / quadSize), 0), depth - 1);
+            environment[x * depth + z] = currentCollision;
+        }
+        for (int i = 0; i < width; i++)
+        {
+            for (int j = 0; j < depth; j++)
+            {
+                if (environment[i * depth + j] != 0)
+                {
+                    bool fillSpace = false;
+                    for (int k = i + 1; k < width; k++)
+                    {
+                        if (environment[k * depth + j] == currentCollision)
+                        {
+                            fillSpace = true;
+                            break;
+                        }
+                    }
+                    if (fillSpace)
+                        environment[(i + 1) * depth + j] = currentCollision;
+                    fillSpace = false;
+                    for (int m = j + 1; m < depth; m++)
+                    {
+                        if (environment[i * depth + m] == currentCollision)
+                        {
+                            fillSpace = true;
+                            break;
+                        }
+                    }
+                    if (fillSpace)
+                        environment[i * depth + j + 1] = currentCollision;
+                }
+            }
+        }
+        reflectWavesCB.SetData(environment);
+        currentCollision++;
+    }
+
     void setRandomDisplacementBuffer()
     {
         ComputeBuffer randomXZ = new ComputeBuffer(width * depth, 8);
@@ -133,15 +213,6 @@ public class HeightField : MonoBehaviour
         }
         randomXZ.SetData(randomDisplacement);
         lastMaxRandomDisplacement = maxRandomDisplacement;
-    }
-
-    void OnDisable()
-    {
-        foreach (var kvp in m_ReflectionCameras)
-        {
-            DestroyImmediate((kvp.Value).gameObject);
-        }
-        m_ReflectionCameras.Clear();
     }
 
     void initHeightField()
@@ -166,13 +237,15 @@ public class HeightField : MonoBehaviour
 
     void initBuffers()
     {
-
         //  initialize buffers
         heightFieldCB = new ComputeBuffer(width * depth, 8);
         heightFieldCBOut = new ComputeBuffer(width * depth, 8);
+        reflectWavesCB = new ComputeBuffer(width * depth, 4);
         verticesCB = new ComputeBuffer(width * depth, 12);
+        environment = new uint[width * depth];
 
         heightFieldCB.SetData(hf);
+        reflectWavesCB.SetData(environment);
 
         //  get corresponding kernel index
         kernel = heightFieldCS.FindKernel("updateHeightfield");
@@ -193,13 +266,15 @@ public class HeightField : MonoBehaviour
     {
         //  calculate average of all points in the heightfield (might be unecessary)
         float currentAvgHeight = 0.0f;
-        for (int i = 0; i < hf.Length; i++)
+        int length = Math.Min(hf.Length, 1024);
+        for (int i = 0; i < length; i++)
         {
             currentAvgHeight += hf[i].height;
         }
-        currentAvgHeight /= hf.Length;
-        
+        currentAvgHeight /= length;
+
         heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
+        heightFieldCS.SetBuffer(kernel, "reflectWaves", reflectWavesCB);
         heightFieldCS.SetBuffer(kernel, "heightFieldOut", heightFieldCBOut);
 
         heightFieldCS.SetFloat("g_fDeltaTime", Time.deltaTime);
@@ -291,6 +366,7 @@ public class HeightField : MonoBehaviour
 
         mesh.RecalculateNormals();
         GetComponent<MeshFilter>().mesh = mesh;
+        GetComponent<MeshCollider>().sharedMesh = mesh;
     }
 
     void CreatePlaneMesh()
@@ -317,24 +393,6 @@ public class HeightField : MonoBehaviour
         newMesh.vertices = planeVertices;
         newMesh.triangles = planeTriangles;
         newMesh.normals = planeNormals;
-    }
-
-    void Update()
-    {
-        //  update heightfield and vertices
-        updateHeightfield();
-        updateVertices();
-
-        if (!GetComponent<Renderer>())
-        {
-            return;
-        }
-
-        //  if noisy factor change -> initialize randomDisplacements again
-        if (!Mathf.Approximately(maxRandomDisplacement, lastMaxRandomDisplacement))
-        {
-            setRandomDisplacementBuffer();
-        }        
     }
 
     void UpdateCameraModes(Camera src, Camera dest)
@@ -370,7 +428,7 @@ public class HeightField : MonoBehaviour
         dest.aspect = src.aspect;
         dest.orthographicSize = src.orthographicSize;
     }
-    
+
     // On-demand create any objects we need for water
     void CreateWaterObjects(Camera currentCamera, out Camera reflectionCamera)
     {
