@@ -198,7 +198,7 @@ Prefab:
     m_Modifications:
     - target: {fileID: 400000, guid: a33bf3bdf10e2924196d90efef2b00db, type: 3}
       propertyPath: m_LocalPosition.x
-      value: -1123
+      value: -967
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: a33bf3bdf10e2924196d90efef2b00db, type: 3}
       propertyPath: m_LocalPosition.y
@@ -206,7 +206,7 @@ Prefab:
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: a33bf3bdf10e2924196d90efef2b00db, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 1839
+      value: 1284
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: a33bf3bdf10e2924196d90efef2b00db, type: 3}
       propertyPath: m_LocalRotation.x
@@ -288,13 +288,13 @@ MonoBehaviour:
   heightFieldCS: {fileID: 7200000, guid: 4953ade53a221db458950ff31d7297c6, type: 3}
   mainCam: {fileID: 1846956667}
   maxRandomDisplacement: 1
-  width: 32
-  depth: 32
+  width: 64
+  depth: 64
   quadSize: 128
   speed: 4
   gridSpacing: 1
-  maxHeight: 256
-  maxVelocity: 256
+  maxHeight: 1024
+  maxVelocity: 1024
   randomInitialVelocity: 20
   dampingVelocity: 0.9999
   textureSize: 1024
@@ -302,8 +302,7 @@ MonoBehaviour:
   reflectLayers:
     serializedVersion: 2
     m_Bits: 4294967295
-  currentCollision: 0
-  updatedEnvironment: 0
+  updateEnvironment: 1
 --- !u!4 &882867328
 Transform:
   m_ObjectHideFlags: 0

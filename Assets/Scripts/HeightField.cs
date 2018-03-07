@@ -12,6 +12,12 @@ public class HeightField : MonoBehaviour
         public float velocity;
     }
 
+    struct int2
+    {
+        public int x;
+        public int y;
+    }
+
     //  public variables
     public ComputeShader heightFieldCS;
     public Camera mainCam;
@@ -35,6 +41,7 @@ public class HeightField : MonoBehaviour
     public int textureSize = 256;
     public float clipPlaneOffset = 0.07f;
     public LayerMask reflectLayers = -1;
+    public bool updateEnvironment;
 
     //  private variables
     private ComputeBuffer heightFieldCB;
@@ -157,57 +164,87 @@ public class HeightField : MonoBehaviour
 
     public void OnCollisionStay(Collision collision)
     {
-        environment = new uint[width * depth];
-        for (int i = 0; i < collision.contacts.Length; i++)
+        if (updateEnvironment)
         {
-            Vector3 coll = collision.contacts[i].point - transform.position;
-            int x = Math.Min(Math.Max(Mathf.RoundToInt(coll.x / quadSize), 0), width - 1);
-            int z = Math.Min(Math.Max(Mathf.RoundToInt(coll.z / quadSize), 0), depth - 1);
-            environment[x * depth + z] = currentCollision;
-        }
-        for (int i = 0; i < width; i++)
-        {
-            for (int j = 0; j < depth; j++)
+            //environment = new uint[width * depth];
+            //  temporary indices (collision points)
+            int2[] tempIndices = new int2[collision.contacts.Length];
+            for (int i = 0; i < collision.contacts.Length; i++)
             {
-                if (environment[i * depth + j] != 0)
-                {
-                    bool fillSpace = false;
-                    for (int k = i + 1; k < width; k++)
-                    {
-                        if (environment[k * depth + j] == currentCollision)
-                        {
-                            fillSpace = true;
-                            break;
-                        }
-                    }
-                    if (fillSpace)
-                        environment[(i + 1) * depth + j] = currentCollision;
-                    fillSpace = false;
-                    for (int m = j + 1; m < depth; m++)
-                    {
-                        if (environment[i * depth + m] == currentCollision)
-                        {
-                            fillSpace = true;
-                            break;
-                        }
-                    }
-                    if (fillSpace)
-                        environment[i * depth + j + 1] = currentCollision;
-                }
+                Vector3 coll = collision.contacts[i].point - transform.position;
+                int x = Math.Min(Math.Max(Mathf.RoundToInt(coll.x / quadSize), 0), width - 1);
+                int z = Math.Min(Math.Max(Mathf.RoundToInt(coll.z / quadSize), 0), depth - 1);
+                //if (hf[x * depth + z].height + maxHeight > coll.y)
+                environment[x * depth + z] = currentCollision;
+                tempIndices[i].x = x;
+                tempIndices[i].y = z;
             }
+            //  fill contact points to represent mesh (for reflecting waves)
+            for (int i = 0; i < tempIndices.Length; i++)
+            {
+                int kTemp = tempIndices[i].x + 1;
+                for (int k = kTemp; k < width; k++)
+                {
+                    if (environment[k * depth + tempIndices[i].y] == currentCollision)
+                    {
+                        kTemp = k;
+                    }
+                }
+                for (int n = tempIndices[i].x + 1; n < kTemp; n++)
+                {
+                    environment[n * depth + tempIndices[i].y] = currentCollision;
+                }
+
+                kTemp = tempIndices[i].x - 1;
+                for (int k = kTemp; k >= 0; k--)
+                {
+                    if (environment[k * depth + tempIndices[i].y] == currentCollision)
+                    {
+                        kTemp = k;
+                    }
+                }
+                for (int n = tempIndices[i].x - 1; n >= kTemp; n--)
+                    environment[n * depth + tempIndices[i].y] = currentCollision;
+
+                kTemp = tempIndices[i].y + 1;
+                for (int k = kTemp; k < depth; k++)
+                {
+                    if (environment[tempIndices[i].x * depth + k] == currentCollision)
+                    {
+                        kTemp = k;
+                    }
+                }
+                for (int n = tempIndices[i].y + 1; n < kTemp; n++)
+                    environment[tempIndices[i].x * depth + n] = currentCollision;
+
+                kTemp = tempIndices[i].y - 1;
+                for (int k = kTemp; k >= 0 ; k--)
+                {
+                    if (environment[tempIndices[i].x * depth + k] == currentCollision)
+                    {
+                        kTemp = k;
+                    }
+                }
+                for (int n = tempIndices[i].y - 1; n >= kTemp; n--)
+                    environment[tempIndices[i].x * depth + n] = currentCollision;
+            }
+            reflectWavesCB.SetData(environment);
+            currentCollision = (currentCollision + 1) % int.MaxValue;
         }
-        reflectWavesCB.SetData(environment);
-        currentCollision = (currentCollision + 1) % int.MaxValue;
     }
 
     void setRandomDisplacementBuffer()
     {
         ComputeBuffer randomXZ = new ComputeBuffer(width * depth, 8);
         randomDisplacement = new Vector2[width * depth];
-        for (int i = 0; i < randomDisplacement.Length; i++)
+        for (int i = 0; i < width; i++)
         {
-            randomDisplacement[i] = new Vector2(UnityEngine.Random.Range(-maxRandomDisplacement * quadSize / 3.0f, maxRandomDisplacement * quadSize / 3.0f),
-                UnityEngine.Random.Range(-maxRandomDisplacement * quadSize / 3.0f, maxRandomDisplacement * quadSize / 3.0f));
+            for (int j = 0; j < depth; j++)
+            {
+                if (i != 0 && j != 0 && i != width - 1 && j != depth - 1)
+                    randomDisplacement[i * depth + j] = new Vector2(UnityEngine.Random.Range(-maxRandomDisplacement * quadSize / 3.0f, maxRandomDisplacement * quadSize / 3.0f),
+                    UnityEngine.Random.Range(-maxRandomDisplacement * quadSize / 3.0f, maxRandomDisplacement * quadSize / 3.0f));
+            }
         }
         randomXZ.SetData(randomDisplacement);
         lastMaxRandomDisplacement = maxRandomDisplacement;
@@ -286,6 +323,7 @@ public class HeightField : MonoBehaviour
         heightFieldCBOut.GetData(hf);
         heightFieldCB.SetData(hf);
         Shader.SetGlobalBuffer("g_HeightField", heightFieldCBOut);
+        environment = new uint[width * depth];
     }
 
     void updateVertices()
