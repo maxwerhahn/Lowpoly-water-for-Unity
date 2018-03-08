@@ -8,7 +8,7 @@ Material:
   m_PrefabInternal: {fileID: 0}
   m_Name: mesh
   m_Shader: {fileID: 4800000, guid: 89b3e96f790e23645bd587a36de5027e, type: 3}
-  m_ShaderKeywords: G_DIRECTIONALLIGHT_ON _ALPHAPREMULTIPLY_ON _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
+  m_ShaderKeywords: _ALPHATEST_ON _SMOOTHNESS_TEXTURE_ALBEDO_CHANNEL_A
   m_LightmapFlags: 4
   m_EnableInstancingVariants: 0
   m_DoubleSidedGI: 0
@@ -89,19 +89,19 @@ Material:
     m_Floats:
     - PixelSnap: 0
     - _BumpScale: 1
-    - _Cutoff: 0.5
+    - _Cutoff: 0.418
     - _DetailNormalMapScale: 1
     - _DistortionPower: 0
-    - _DstBlend: 10
+    - _DstBlend: 0
     - _EnableExternalAlpha: 0
     - _FresnelScale: 4
     - _GerstnerIntensity: 1
-    - _GlossMapScale: 0.729
+    - _GlossMapScale: 0.663
     - _Glossiness: 0.735
     - _GlossyReflections: 1
     - _MaxTreshold: 0
     - _Metallic: 0
-    - _Mode: 3
+    - _Mode: 1
     - _OcclusionStrength: 1
     - _Parallax: 0.02
     - _ReflDistort: 0.44
@@ -118,14 +118,18 @@ Material:
     - _UVSec: 0
     - _WaveScale: 0.063
     - _WavesDensity: 0
-    - _ZWrite: 0
+    - _ZWrite: 1
     - _isBending: 0
     - g_Attenuation: 1
-    - g_DepthVisible: 711
+    - g_DepthVisible: 243
+    - g_DistortionFactor: 50
+    - g_FoamDepth: 0.092
     - g_Glossiness: 0.5
     - g_Metallic: 0
-    - g_Shininess: 20
-    - g_directionalLight: 1
+    - g_PointLightIntensity: 0
+    - g_Reflection: 0.287
+    - g_Shininess: 98
+    - g_directionalLight: 0
     - g_fQuadSize: 8
     - g_iDepth: 128
     - g_iWidth: 256
@@ -136,7 +140,7 @@ Material:
     - _BaseColor: {r: 0, g: 0.91111135, b: 1, a: 1}
     - _BumpDirection: {r: 0, g: 0, b: 0, a: 0}
     - _BumpTiling: {r: 0, g: 0, b: 0, a: 0}
-    - _Color: {r: 0.014705896, g: 1, b: 0.8776877, a: 1}
+    - _Color: {r: 0.014705896, g: 1, b: 0.8776877, a: 0.728}
     - _DistortParams: {r: 0, g: 0, b: 0, a: 0}
     - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
     - _Flip: {r: 1, g: 1, b: 1, a: 1}
@@ -156,6 +160,7 @@ Material:
     - _SpecularColor: {r: 0, g: 0, b: 0, a: 1}
     - _WavesColor: {r: 0, g: 0, b: 0, a: 0.25}
     - _WorldLightDir: {r: 0, g: 0, b: 0, a: 0}
-    - g_Color: {r: 0.18977077, g: 0.48036465, b: 0.9558824, a: 0.7058824}
+    - g_Color: {r: 0, g: 0.09915656, b: 0.9632353, a: 1}
+    - g_DepthColor: {r: 0, g: 1, b: 1, a: 1}
     - g_LightDir: {r: 1, g: 0.9705882, b: 0.9705882, a: 1}
     - g_SpecColor: {r: 1, g: 1, b: 1, a: 1}
