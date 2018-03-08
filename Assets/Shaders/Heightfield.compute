@@ -100,12 +100,17 @@ void interpolateVertices(uint3 id : SV_DispatchThreadID) {
 	uint i = id.x;
 	float3 pos = verticesPosition[i];
 	uint k, m = 0;
+
 	k = round(pos.x / g_fQuadSize);
 	m = round(pos.z / g_fQuadSize);
 	pos.x = k * g_fQuadSize;
 	pos.z = m * g_fQuadSize;
 	pos.x += randomDisplacement[k * g_iDepth + m].x;
 	pos.z += randomDisplacement[k * g_iDepth + m].y;
+	if (randomDisplacement[k * g_iDepth + m].x < 0)
+		k -= 1;
+	if (randomDisplacement[k * g_iDepth + m].y < 0)
+		m -= 1;
 
 	//	get surrounding height values at the vertex position (can be randomly displaced)
 	float x1 = heightFieldIn[k * g_iDepth + m].height;
