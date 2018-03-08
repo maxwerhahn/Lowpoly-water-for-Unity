@@ -105,7 +105,7 @@ Shader "Custom/HeightFieldRender" {
 
 			//	pass for directional lights
 		Pass {
-			ZWrite Off
+				ZWrite On
 				Cull Off
 				Blend SrcAlpha OneMinusSrcAlpha
 
@@ -136,31 +136,38 @@ Shader "Custom/HeightFieldRender" {
 					attenuation /= length(direction);
 				}
 
-				float3 diffuseReflection = attenuation * _LightColor0.rgb * g_Color.rgb * max(0.0, dot(normalDirection, lightDirection));
-
+				float3 diffuseReflection;
 				float3 specularReflection;
-				if (dot(normalDirection, lightDirection) > 0.0f)
+
+				if (dot(normalDirection, lightDirection) > 0.0f) {
 					specularReflection = attenuation * g_SpecColor.rgb * _LightColor0.rgb * pow(max(0.0, dot(reflect(-lightDirection, normalDirection), viewDirection)), g_Shininess);
-				else
+					diffuseReflection = attenuation * _LightColor0.rgb * g_Color.rgb * max(0.0, dot(normalDirection, lightDirection));
+				}
+				//	directional light under water
+				else {
+					diffuseReflection = 0.5f * attenuation * _LightColor0.rgb * g_Color.rgb * max(0.0, dot(-normalDirection, lightDirection));
 					specularReflection = float3(0.0f, 0.0f, 0.0f);
+				}
 
 				//	add vertex lighting (4 non-important vertex lights)
-				for (int index = 0; index < 4; index++)
+				for (int i = 0; i < 4; i++)
 				{
-					float4 lightPosition = float4(unity_4LightPosX0[index],
-						unity_4LightPosY0[index],
-						unity_4LightPosZ0[index], 1.0);
+					float4 lightPosition = float4(unity_4LightPosX0[i],	unity_4LightPosY0[i], unity_4LightPosZ0[i], 1.0f);
 
 					float3 dist = lightPosition.xyz - pos;
 					float3 dir = normalize(dist);
 					float squaredDistance =	dot(dist, dist);
-					float att = attenuation / (1.0 + unity_4LightAtten0[index] * squaredDistance);
-					diffuseReflection = (diffuseReflection + att * unity_LightColor[index].rgb * g_Color.rgb * max(0.0, dot(normalDirection, dir)));
-
-					if (dot(normalDirection, lightDirection) > 0.0f)
-						specularReflection = (specularReflection + att * g_SpecColor.rgb * unity_LightColor[index].rgb * pow(max(0.0, dot(reflect(-dir, normalDirection), viewDirection)), g_Shininess));
+					float att = g_Attenuation / (1.0f + unity_4LightAtten0[i] * squaredDistance);
+					
+					if (dot(normalDirection, dir) < 0.0f) {
+						diffuseReflection = (diffuseReflection + 0.5f * att * unity_LightColor[i].rgb * g_Color.rgb * max(0.0, dot(-normalDirection, dir)));
+					}
+					else {
+						diffuseReflection = (diffuseReflection + att * unity_LightColor[i].rgb * g_Color.rgb * max(0.0, dot(normalDirection, dir)));
+						specularReflection = (specularReflection + att * g_SpecColor.rgb * unity_LightColor[i].rgb * pow(max(0.0, dot(reflect(-dir, normalDirection), viewDirection)), g_Shininess));
+					}
 				}
-				return float4(specularReflection + diffuseReflection, g_Color.w);
+				return float4(specularReflection + diffuseReflection + UNITY_LIGHTMODEL_AMBIENT * g_Color, g_Color.w);
 			}
 				[maxvertexcount(3)]
 			void geom(triangle v2g p[3], inout TriangleStream<v2g> tristream)
@@ -202,7 +209,7 @@ Shader "Custom/HeightFieldRender" {
 				tristream.Append(o2);
 				tristream.RestartStrip();
 			}
-				ENDCG
+			ENDCG
 			}			
 		}
 		Fallback "VertexLit"

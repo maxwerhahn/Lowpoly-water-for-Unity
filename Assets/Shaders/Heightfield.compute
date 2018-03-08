@@ -37,11 +37,6 @@ void updateHeightfield(uint3 id : SV_DispatchThreadID)
 	if (i >= g_iWidth || j >= g_iDepth)
 		return;
 
-	if (reflectWaves[i * g_iDepth + j] != 0) {
-		heightFieldOut[i * g_iDepth + j].velocity = 0;
-		heightFieldOut[i * g_iDepth + j].height = -g_fAvgHeight;
-		return;
-	}
 	//	let c be g_fSpeed, 
 	//	v[i, j]_t the velocity of the heightfield at position i, j at timeStep t, 
 	//	h[i,j]_t equivalent
@@ -93,6 +88,10 @@ void updateHeightfield(uint3 id : SV_DispatchThreadID)
 
 	//	clamp height
 	heightFieldOut[i * g_iDepth + j].height = clamp(heightFieldOut[i * g_iDepth + j].height, -g_fMaxHeight, g_fMaxHeight);
+
+	if (reflectWaves[i * g_iDepth + j] != 0) {
+		heightFieldOut[i * g_iDepth + j].velocity /= 2.0f;
+	}
 }
 
 [numthreads(256, 1, 1)]
