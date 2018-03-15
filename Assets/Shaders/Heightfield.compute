@@ -1,5 +1,12 @@
 ﻿#pragma kernel updateHeightfield
 #pragma kernel interpolateVertices
+#pragma kernel interpolateVerticesSWE
+#pragma kernel updateHeightfieldUsingSWE
+#pragma kernel updateFlux
+#pragma kernel applyBC
+/*#pragma kernel updateVWImplicitOne
+#pragma kernel updateUVWDiscreteImplicitOne
+#pragma kernel updateUVWDiscreteTwo*/
 
 struct HeightField {
 	float height;
@@ -16,6 +23,8 @@ float g_fQuadSize;		//	size of the quads of the mesh
 float g_fAvgHeight;		//	avgerage height, computed on CPU
 uint g_iDepth;			//	depth of the heightfield
 uint g_iWidth;			//	width "-"
+float g_fGravity;
+float g_fManning;
 
 RWStructuredBuffer<HeightField> heightFieldOut : register(u0);
 StructuredBuffer<HeightField> heightFieldIn : register(t0);
@@ -44,29 +53,28 @@ void updateHeightfield(uint3 id : SV_DispatchThreadID)
 	if (reflectWaves[max(i - 1, 0) * g_iDepth + j] == 0)
 		totalHeight += heightFieldIn[max(i - 1, 0) * g_iDepth + j].height;
 	else
-		totalHeight += heightFieldIn[i * g_iDepth + j].height / 2.0f;
+		totalHeight += heightFieldIn[i * g_iDepth + j].height;
 
 	if (reflectWaves[min(g_iWidth - 1, i + 1) * g_iDepth + j] == 0)
 		totalHeight += heightFieldIn[min(g_iWidth - 1, i + 1) * g_iDepth + j].height;
 	else
-		totalHeight += heightFieldIn[i * g_iDepth + j].height / 2.0f;
+		totalHeight += heightFieldIn[i * g_iDepth + j].height;
 
 	if (reflectWaves[i * g_iDepth + max(j - 1, 0)] == 0)
 		totalHeight += heightFieldIn[i * g_iDepth + max(j - 1, 0)].height;
 	else
-		totalHeight += heightFieldIn[i * g_iDepth + j].height / 2.0f;
+		totalHeight += heightFieldIn[i * g_iDepth + j].height;
 
-	if (reflectWaves[i * g_iDepth + min(g_iDepth - 1, min(j + 1, g_iDepth - 1))] == 0)
+	if (reflectWaves[i * g_iDepth + min(j + 1, g_iDepth - 1)] == 0)
 		totalHeight += heightFieldIn[i * g_iDepth + min(g_iDepth - 1, min(j + 1, g_iDepth - 1))].height;
 	else
-		totalHeight += heightFieldIn[i * g_iDepth + j].height / 2.0f;
+		totalHeight += heightFieldIn[i * g_iDepth + j].height;
 	
-	/*
-	totalHeight += heightFieldIn[max(i - 1, 0) * g_iDepth + j].height;
-	totalHeight += heightFieldIn[min(g_iWidth - 1, i + 1) * g_iDepth + j].height;
-	totalHeight += heightFieldIn[i * g_iDepth + max(j - 1, 0)].height;
-	totalHeight += heightFieldIn[i * g_iDepth + min(g_iDepth - 1, min(j + 1, g_iDepth - 1))].height;
-	*/
+	//	different behaviour at obstacle or wall
+	if (reflectWaves[i * g_iDepth + j] != 0) {
+		totalHeight /= 2.0f;
+	}
+
 	//	wave equation in 2D, semi-implicit euler
 	//	max and min used for clamping the boundary and reflecting the waves
 	//	v[i, j]_(t+1) = v_t + dt * c * c * ((h[i - 1, j] + h[i + 1, j] + h[i, j + 1] + h[i, j - 1])- 4 * h[i, j]_t)	/ (g_fGridSpacing * g_fGridSpacing)
@@ -85,10 +93,6 @@ void updateHeightfield(uint3 id : SV_DispatchThreadID)
 
 	//	clamp height
 	heightFieldOut[i * g_iDepth + j].height = clamp(heightFieldOut[i * g_iDepth + j].height, -g_fMaxHeight, g_fMaxHeight);
-
-	if (reflectWaves[i * g_iDepth + j] != 0) {
-		heightFieldOut[i * g_iDepth + j].velocity /= 2.0f;
-	}
 }
 
 RWStructuredBuffer<float3> verticesPosition : register(u1);
@@ -102,8 +106,6 @@ void interpolateVertices(uint3 id : SV_DispatchThreadID) {
 
 	k = round(pos.x / g_fQuadSize);
 	m = round(pos.z / g_fQuadSize);
-	pos.x = k * g_fQuadSize;
-	pos.z = m * g_fQuadSize;
 	pos.x += randomDisplacement[k * g_iDepth + m].x;
 	pos.z += randomDisplacement[k * g_iDepth + m].y;
 	if (randomDisplacement[k * g_iDepth + m].x < 0)
@@ -116,6 +118,124 @@ void interpolateVertices(uint3 id : SV_DispatchThreadID) {
 	float x2 = heightFieldIn[min((k + 1), g_iWidth - 1) * g_iDepth + min(m + 1, g_iDepth - 1)].height;
 	float x3 = heightFieldIn[k * g_iDepth + min(m + 1, g_iDepth - 1)].height;
 	float x4 = heightFieldIn[min((k + 1), g_iWidth - 1) * g_iDepth + m].height;
+
+	//	get x and y value between 0 and 1 for interpolation
+	float x = (pos.x / g_fQuadSize - k);
+	float y = (pos.z / g_fQuadSize - m);
+
+	//	bilinear interpolation to get height at vertex i
+	//	note if x == 0 and y == 0 vertex position is at heightfield position.
+	float resultingHeight = (x1 * (1 - x) + x4 * (x)) * (1 - y) + (x3 * (1 - x) + x2 * (x)) * (y);
+	pos.y = resultingHeight;
+	verticesPosition[i] = pos;
+}
+
+StructuredBuffer<float3> U : register(t0);				//	width x depth
+StructuredBuffer<float3> G : register(t1);				//	width x depth + 1
+StructuredBuffer<float3> F : register(t2);				//	width + 1 x depth
+StructuredBuffer<float> B : register(t3);				//	width x depth 
+
+
+RWStructuredBuffer<float3> U_new : register(u0);		//	width x depth
+RWStructuredBuffer<float3> G_new : register(u1);		//	width x depth + 1
+RWStructuredBuffer<float3> F_new : register(u2);		//	width + 1 x depth
+
+[numthreads(16, 16, 1)]
+void updateHeightfieldUsingSWE(uint3 id : SV_DispatchThreadID)
+{
+	int i = id.x;
+	int j = id.y;
+
+	if (i >= g_iWidth - 1 || j >= g_iDepth - 1 || i <= 0 || j <= 0)
+		return;
+	float dx = g_fGridSpacing / g_iWidth;
+	float dy = g_fGridSpacing / g_iDepth;
+	float dt = min(g_fDeltaTime * 0.02f, min(dx, dy) * 0.01f);
+	int index = i * g_iDepth + j;
+
+	int s = i * g_iDepth + j - 1;
+	int w = (i - 1) * g_iDepth + j;
+	int e = (i + 1) * g_iDepth + j;
+	int n = i * g_iDepth + j + 1;
+
+	U_new[index] = 0.25f * (U[s] + U[w] + U[e] + U[n])
+		- 0.5f * dt / dx * (F[e] - F[w]) - 0.5f * dt / dy * (G[n] - G[s]);
+}
+
+[numthreads(16, 16, 1)]
+void updateFlux(uint3 id : SV_DispatchThreadID) {
+	int i = id.x;
+	int j = id.y;
+
+	if (i >= g_iWidth || j >= g_iDepth)
+		return;
+
+	int index = i * g_iDepth + j;
+	float h = U_new[index].x;
+	float u = U_new[index].y / h;
+	float v = U_new[index].z / h;
+
+	F_new[index].x = h*u;
+	F_new[index].y = h*u*u + 0.5f*g_fGravity*h*h;
+	F_new[index].z = h*v*u;
+	G_new[index].x = h*v;
+	G_new[index].y = h*v*u;
+	G_new[index].z = h*v*v + 0.5f*g_fGravity*h*h;	
+}
+
+[numthreads(16,16,1)]
+void applyBC(uint3 id : SV_DispatchThreadID) {
+	int i = id.x;
+	int j = id.y;
+
+	if (i >= g_iWidth || j >= g_iDepth)
+		return;
+
+	int index = i * g_iDepth + j;
+
+	int s = i * g_iDepth + j - 1;
+	int w = (i - 1) * g_iDepth + j;
+	int e = (i + 1) * g_iDepth + j;
+	int n = i * g_iDepth + j + 1;
+
+	if (i == 0) {
+		U_new[index] = U_new[e];
+		U_new[index].y = -U_new[index].y;
+	}
+	else if (i == g_iWidth - 1) {
+		U_new[index] = U_new[w];
+		U_new[index].y = -U_new[index].y;
+	}
+	else if (j == 0) {
+		U_new[index] = U_new[n];
+		U_new[index].z = -U_new[index].z;
+	}
+	else if (j == g_iDepth - 1) {
+		U_new[index] = U_new[s];
+		U_new[index].z = -U_new[index].z;
+	}
+}
+
+[numthreads(256, 1, 1)]
+void interpolateVerticesSWE(uint3 id : SV_DispatchThreadID) {
+	uint i = id.x;
+	float3 pos = verticesPosition[i];
+	uint k, m = 0;
+
+	k = round(pos.x / g_fQuadSize);
+	m = round(pos.z / g_fQuadSize);
+	pos.x += randomDisplacement[k * g_iDepth + m].x;
+	pos.z += randomDisplacement[k * g_iDepth + m].y;
+	if (randomDisplacement[k * g_iDepth + m].x < 0)
+		k -= 1;
+	if (randomDisplacement[k * g_iDepth + m].y < 0)
+		m -= 1;
+
+	//	get surrounding height values at the vertex position (can be randomly displaced)
+	float x1 = U[k * g_iDepth + m].x;
+	float x2 = U[min((k + 1), g_iWidth - 1) * g_iDepth + min(m + 1, g_iDepth - 1)].x;
+	float x3 = U[k * g_iDepth + min(m + 1, g_iDepth - 1)].x;
+	float x4 = U[min((k + 1), g_iWidth - 1) * g_iDepth + m].x;
 
 	//	get x and y value between 0 and 1 for interpolation
 	float x = (pos.x / g_fQuadSize - k);

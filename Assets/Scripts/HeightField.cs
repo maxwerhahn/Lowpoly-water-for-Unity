@@ -3,9 +3,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System;
 
+//[ExecuteInEditMode]
 public class HeightField : MonoBehaviour
 {
-    [ExecuteInEditMode]
     public struct heightField
     {
         public float height;
@@ -18,30 +18,92 @@ public class HeightField : MonoBehaviour
         public int y;
     }
 
+    public enum WaterMode
+    {
+        Minimal, Reflection, Obstacles, ReflAndObstcl
+    };
+
     //  public variables
+
+    /// <summary>
+    /// 0: simple water 
+    /// 1: reflections 
+    /// 2: obstacles reflect waves in realtime 
+    /// 3: reflections + obstacles 
+    /// </summary>       
+    public WaterMode waterMode;
+
+    /// <summary>
+    /// Compute Shader for heightField updates
+    /// </summary>
     public ComputeShader heightFieldCS;
+    /// <summary>
+    /// Main camera of the scene
+    /// </summary>
     public Camera mainCam;
 
+    /// <summary>
+    /// The maximum random displacement of the vertices of the generated mesh
+    /// </summary>
     [Range(0.0f, 1.0f)]
-    public float maxRandomDisplacement;     ///  initial random displacement of vertices
+    public float maxRandomDisplacement;
 
+    /// <summary>
+    /// Width of the generated mesh
+    /// </summary>
     [Range(8, 254)]
-    public int width;                       ///  width of height field
+    public int width;
+    /// <summary>
+    /// Depth of the generated mesh
+    /// </summary>
     [Range(8, 254)]
-    public int depth;                       ///  depth of height field
-    public float quadSize;                  ///  size of one quad
+    public int depth;
+    /// <summary>
+    /// Distance between vertices of the generated mesh
+    /// </summary>
+    public float quadSize;
 
-    public float speed;                     ///  speed of waves
-    public float gridSpacing;               ///  grid spacing        
-    public float maxHeight;                 ///  maximum height in height field
-    public float maxVelocity;               ///  maximum velocity of vertices
-    public float randomInitialVelocity;     ///  apply random velocity to randomly chosen vertices
-    public float dampingVelocity;           ///  damping factor for velocities
+    /// <summary>
+    /// Speed of waves
+    /// </summary>
+    public float speed;
+    /// <summary>
+    /// Also controls the speed of waves/updates
+    /// </summary>
+    public float gridSpacing;
+    /// <summary>
+    /// Maximum height values at the vertices
+    /// </summary>       
+    public float maxHeight;
+    /// <summary>
+    /// Maximum velocity values at the vertices
+    /// </summary>       
+    public float maxVelocity;
+    /// <summary>
+    /// Random inital velocity values at the vertices
+    /// </summary>       
+    public float randomInitialVelocity;
+    /// <summary>
+    /// Damping factor to reduce artifacts
+    /// </summary>       
+    public float dampingVelocity;
 
+    /// <summary>
+    /// Texture size of the reflection
+    /// </summary>       
     public int textureSize = 256;
+    /// <summary>
+    /// Reflection plane offset
+    /// </summary>       
     public float clipPlaneOffset = 0.07f;
+    /// <summary>
+    /// Layermask to ignore certain layers
+    /// </summary>       
     public LayerMask reflectLayers = -1;
-    public bool updateEnvironment;
+    /// <summary>
+    /// chooses updatemode for the heightField
+    /// </summary>    
+    public bool useLinearEquation;
 
     //  private variables
     private ComputeBuffer heightFieldCB;
@@ -63,25 +125,35 @@ public class HeightField : MonoBehaviour
     private RenderTexture reflectionTex;
 
     private int m_OldReflectionTextureSize;
-    private Mesh newMesh;
+    private Mesh planeMesh;
+    private Vector3[] vertices;
 
     private uint currentCollision;
 
-
     //  SWE
-    private Vector3 [] U;
-    private Vector3 [] G;
-    private Vector3 [] F;
+    private Vector3[] U;
+    private Vector3[] G;
+    private Vector3[] F;
     private float[] B;
+
+    private float dx;
+    private float dy;
 
     public float frictionSWE;
 
     private int kernelSWE;
     private int kernelSWEFlux;
+    private int kernelSWEBC;
+    private int kernelSWEVertices;
 
     public float epsilon;
     
-    void Start()
+    private void Start()
+    {
+        Initialize();
+    }
+
+    void Initialize()
     {
         mainCam.depthTextureMode = DepthTextureMode.Depth;
 
@@ -90,8 +162,6 @@ public class HeightField : MonoBehaviour
         setRandomDisplacementBuffer();
         CreateMesh();
         initBuffers();
-
-        //initValues();
 
         initValuesSWE();
         initBuffersSWE();
@@ -109,76 +179,78 @@ public class HeightField : MonoBehaviour
 
     void Update()
     {
-        //  update heightfield and vertices
-        updateHeightfield();
-        updateVertices();
-
-        //updateFlux();
-        //updateHeightVelocitySWE();
-        //updateHeightVelocity();
-
         //  if noisy factor changes -> initialize randomDisplacements again
         if (!Mathf.Approximately(maxRandomDisplacement, lastMaxRandomDisplacement))
         {
             setRandomDisplacementBuffer();
         }
     }
-
+    
     public void OnWillRenderObject()
     {
-        Mesh oldMesh = GetComponent<MeshFilter>().mesh;
-        GetComponent<MeshFilter>().mesh = newMesh;
-        if (!enabled || !GetComponent<Renderer>() || !GetComponent<Renderer>().sharedMaterial ||
-            !GetComponent<Renderer>().enabled)
+        if (useLinearEquation)
         {
-            return;
+            updateHeightfield();
+            updateVertices();
         }
-
-        Camera cam = Camera.current;
-        if (!cam)
+        else
+            updateHeightVelocitySWE();
+        if (waterMode == WaterMode.ReflAndObstcl || waterMode == WaterMode.Reflection)
         {
-            return;
+            Mesh oldMesh = GetComponent<MeshFilter>().mesh;
+            GetComponent<MeshFilter>().mesh = planeMesh;
+            if (!enabled || !GetComponent<Renderer>() || !GetComponent<Renderer>().sharedMaterial ||
+                !GetComponent<Renderer>().enabled)
+            {
+                return;
+            }
+
+            Camera cam = Camera.current;
+            if (!cam)
+            {
+                return;
+            }
+
+            Camera reflectionCamera;
+            CreateWaterObjects(cam, out reflectionCamera);
+
+            // find out the reflection plane: position and normal in world space
+            Vector3 pos = transform.position;
+            Vector3 normal = transform.up;
+
+            UpdateCameraModes(cam, reflectionCamera);
+
+            // Reflect camera around reflection plane
+            float d = -Vector3.Dot(normal, pos) - clipPlaneOffset;
+            Vector4 reflectionPlane = new Vector4(normal.x, normal.y, normal.z, d);
+
+            Matrix4x4 reflection = Matrix4x4.zero;
+            CalculateReflectionMatrix(ref reflection, reflectionPlane);
+            Vector3 oldpos = cam.transform.position;
+            Vector3 newpos = reflection.MultiplyPoint(oldpos);
+            reflectionCamera.worldToCameraMatrix = cam.worldToCameraMatrix * reflection;
+
+            // Setup oblique projection matrix so that near plane is our reflection
+            // plane. This way we clip everything below/above it for free.
+            Vector4 clipPlane = CameraSpacePlane(reflectionCamera, pos, normal, 1.0f);
+            reflectionCamera.projectionMatrix = cam.CalculateObliqueMatrix(clipPlane);
+
+            // Set custom culling matrix from the current camera
+            reflectionCamera.cullingMatrix = cam.projectionMatrix * cam.worldToCameraMatrix;
+
+            reflectionCamera.cullingMask = ~(1 << 4) & reflectLayers.value; // never render water layer
+            reflectionCamera.targetTexture = reflectionTex;
+            bool oldCulling = GL.invertCulling;
+            GL.invertCulling = !oldCulling;
+            reflectionCamera.transform.position = newpos;
+            Vector3 euler = cam.transform.eulerAngles;
+            reflectionCamera.transform.eulerAngles = new Vector3(-euler.x, euler.y, euler.z);
+            reflectionCamera.Render();
+            reflectionCamera.transform.position = oldpos;
+            GL.invertCulling = oldCulling;
+            GetComponent<Renderer>().sharedMaterial.SetTexture("_ReflectionTex", reflectionTex);
+            GetComponent<MeshFilter>().mesh = oldMesh;
         }
-
-        Camera reflectionCamera;
-        CreateWaterObjects(cam, out reflectionCamera);
-
-        // find out the reflection plane: position and normal in world space
-        Vector3 pos = transform.position;
-        Vector3 normal = transform.up;
-
-        UpdateCameraModes(cam, reflectionCamera);
-
-        // Reflect camera around reflection plane
-        float d = -Vector3.Dot(normal, pos) - clipPlaneOffset;
-        Vector4 reflectionPlane = new Vector4(normal.x, normal.y, normal.z, d);
-
-        Matrix4x4 reflection = Matrix4x4.zero;
-        CalculateReflectionMatrix(ref reflection, reflectionPlane);
-        Vector3 oldpos = cam.transform.position;
-        Vector3 newpos = reflection.MultiplyPoint(oldpos);
-        reflectionCamera.worldToCameraMatrix = cam.worldToCameraMatrix * reflection;
-
-        // Setup oblique projection matrix so that near plane is our reflection
-        // plane. This way we clip everything below/above it for free.
-        Vector4 clipPlane = CameraSpacePlane(reflectionCamera, pos, normal, 1.0f);
-        reflectionCamera.projectionMatrix = cam.CalculateObliqueMatrix(clipPlane);
-
-        // Set custom culling matrix from the current camera
-        reflectionCamera.cullingMatrix = cam.projectionMatrix * cam.worldToCameraMatrix;
-
-        reflectionCamera.cullingMask = ~(1 << 4) & reflectLayers.value; // never render water layer
-        reflectionCamera.targetTexture = reflectionTex;
-        bool oldCulling = GL.invertCulling;
-        GL.invertCulling = !oldCulling;
-        reflectionCamera.transform.position = newpos;
-        Vector3 euler = cam.transform.eulerAngles;
-        reflectionCamera.transform.eulerAngles = new Vector3(-euler.x, euler.y, euler.z);
-        reflectionCamera.Render();
-        reflectionCamera.transform.position = oldpos;
-        GL.invertCulling = oldCulling;
-        GetComponent<Renderer>().sharedMaterial.SetTexture("_ReflectionTex", reflectionTex);
-        GetComponent<MeshFilter>().mesh = oldMesh;
     }
 
     void OnDisable()
@@ -192,7 +264,7 @@ public class HeightField : MonoBehaviour
 
     public void OnCollisionStay(Collision collision)
     {
-        if (updateEnvironment)
+        if (waterMode == WaterMode.ReflAndObstcl || waterMode == WaterMode.Obstacles)
         {
             //environment = new uint[width * depth];
             //  temporary indices (collision points)
@@ -210,7 +282,7 @@ public class HeightField : MonoBehaviour
             //  fill contact points to represent mesh (for reflecting waves)
             for (int i = 0; i < tempIndices.Length; i++)
             {
-                int kTemp = tempIndices[i].x + 1;
+                int kTemp = tempIndices[i].x;
                 for (int k = kTemp; k < width; k++)
                 {
                     if (environment[k * depth + tempIndices[i].y] == currentCollision)
@@ -218,12 +290,10 @@ public class HeightField : MonoBehaviour
                         kTemp = k;
                     }
                 }
-                for (int n = tempIndices[i].x + 1; n < kTemp; n++)
-                {
-                    environment[n * depth + tempIndices[i].y] = currentCollision;
-                }
+                for (int n = tempIndices[i].x + 1; n < kTemp; n++)                
+                    environment[n * depth + tempIndices[i].y] = currentCollision;                
 
-                kTemp = tempIndices[i].x - 1;
+                kTemp = tempIndices[i].x;
                 for (int k = kTemp; k >= 0; k--)
                 {
                     if (environment[k * depth + tempIndices[i].y] == currentCollision)
@@ -234,7 +304,7 @@ public class HeightField : MonoBehaviour
                 for (int n = tempIndices[i].x - 1; n >= kTemp; n--)
                     environment[n * depth + tempIndices[i].y] = currentCollision;
 
-                kTemp = tempIndices[i].y + 1;
+                kTemp = tempIndices[i].y;
                 for (int k = kTemp; k < depth; k++)
                 {
                     if (environment[tempIndices[i].x * depth + k] == currentCollision)
@@ -245,7 +315,7 @@ public class HeightField : MonoBehaviour
                 for (int n = tempIndices[i].y + 1; n < kTemp; n++)
                     environment[tempIndices[i].x * depth + n] = currentCollision;
 
-                kTemp = tempIndices[i].y - 1;
+                kTemp = tempIndices[i].y;
                 for (int k = kTemp; k >= 0; k--)
                 {
                     if (environment[tempIndices[i].x * depth + k] == currentCollision)
@@ -261,7 +331,7 @@ public class HeightField : MonoBehaviour
         }
     }
 
-    void setRandomDisplacementBuffer()
+    private void setRandomDisplacementBuffer()
     {
         randomDisplacement = new Vector2[width * depth];
         for (int i = 0; i < width; i++)
@@ -276,7 +346,7 @@ public class HeightField : MonoBehaviour
         lastMaxRandomDisplacement = maxRandomDisplacement;
     }
 
-    void initHeightField()
+    private void initHeightField()
     {
         hf = new heightField[width * depth];
 
@@ -296,7 +366,7 @@ public class HeightField : MonoBehaviour
         }
     }
 
-    void initBuffers()
+    private void initBuffers()
     {
         //  initialize buffers
         heightFieldCB = new ComputeBuffer(width * depth, 8);
@@ -323,11 +393,11 @@ public class HeightField : MonoBehaviour
     }
 
     //  dispatch of compute shader
-    void updateHeightfield()
+    private void updateHeightfield()
     {
         //  calculate average of all points in the heightfield (might be unecessary)
         float currentAvgHeight = 0.0f;
-        int length = Math.Min(hf.Length, 1024);
+        int length = Math.Min(hf.Length, 512);
         for (int i = 0; i < length; i++)
         {
             currentAvgHeight += hf[i].height;
@@ -354,15 +424,14 @@ public class HeightField : MonoBehaviour
         environment = new uint[width * depth];
     }
 
-    void updateVertices()
+    private void updateVertices()
     {
         Mesh mesh = GetComponent<MeshFilter>().mesh;
         Vector3[] verts = mesh.vertices;
 
-
         ComputeBuffer randomXZ = new ComputeBuffer(width * depth, 8);
         randomXZ.SetData(randomDisplacement);
-        verticesCB.SetData(verts);
+        verticesCB.SetData(vertices);
         heightFieldCS.SetBuffer(kernelVertices, "heightFieldIn", heightFieldCB);
         heightFieldCS.SetBuffer(kernelVertices, "verticesPosition", verticesCB);
         heightFieldCS.SetBuffer(kernelVertices, "randomDisplacement", randomXZ);
@@ -376,8 +445,110 @@ public class HeightField : MonoBehaviour
         randomXZ.Release();
     }
 
-    //  creates mesh without flat shading
-    void CreateMesh()
+    private void initValuesSWE()
+    {
+        U = new Vector3[width * depth];
+        F = new Vector3[(width + 1) * (depth)];
+        G = new Vector3[(width) * (depth + 1)];
+        B = new float[width * depth];
+
+        U[(int)(width / 2f * depth + depth / 2f)].x = maxHeight;
+        U[(int)((width / 2f + 1) * depth + depth / 2f + 1)].x = maxHeight;
+        U[(int)((width / 2f + 1) * depth + depth / 2f)].x = maxHeight;
+        U[(int)(width / 2f * depth + depth / 2f + 1)].x = maxHeight;
+        U[(int)((width / 2f + 1) * depth + depth / 2f - 1)].x = maxHeight;
+        U[(int)((width / 2f - 1) * depth + depth / 2f + 1)].x = maxHeight;
+        U[(int)((width / 2f - 1) * depth + depth / 2f - 1)].x = maxHeight;
+        U[(int)((width / 2f - 1) * depth + depth / 2f)].x = maxHeight;
+        U[(int)(width / 2f * depth + depth / 2f - 1)].x = maxHeight;
+
+        for (int i = 0; i < width; i++)
+        {
+            for (int j = 0; j < depth; j++)
+            {
+                float x = (i - width / 2.0f) * quadSize;
+                float y = (j - depth / 2.0f) * quadSize;
+                if (Mathf.Sqrt(x * x + y * y) < 5 * Mathf.Min(quadSize, quadSize))
+                    U[i * depth + j].x = maxHeight;
+                else
+                    U[i * depth + j].x = 1.0f;
+            }
+        }
+        for (int i = 0; i < B.Length; i++)
+        {
+            B[i] = 10;
+        }
+    }
+
+    private void initBuffersSWE()
+    {
+        kernelSWE = heightFieldCS.FindKernel("updateHeightfieldUsingSWE");
+        kernelSWEBC = heightFieldCS.FindKernel("applyBC");
+        kernelSWEFlux = heightFieldCS.FindKernel("updateFlux");
+        kernelSWEVertices = heightFieldCS.FindKernel("interpolateVerticesSWE");
+    }
+
+    private void updateHeightVelocitySWE()
+    {
+        ComputeBuffer U_read = new ComputeBuffer(U.Length, 12);
+        ComputeBuffer U_RW = new ComputeBuffer(U.Length, 12);
+
+        ComputeBuffer F_RW = new ComputeBuffer(F.Length, 12);
+        ComputeBuffer G_RW = new ComputeBuffer(G.Length, 12);
+
+        U_read.SetData(U);
+
+        heightFieldCS.SetBuffer(kernelSWEFlux, "F_new", F_RW);
+        heightFieldCS.SetBuffer(kernelSWEFlux, "G_new", G_RW);
+        heightFieldCS.SetBuffer(kernelSWEFlux, "U_new", U_read);
+
+        heightFieldCS.SetFloat("g_fGravity", Mathf.Abs(Physics.gravity.y));
+        heightFieldCS.SetFloat("g_fGridSpacing", quadSize);
+        heightFieldCS.SetFloat("g_fDeltaTime", Time.deltaTime);
+        heightFieldCS.SetFloat("g_fManning", frictionSWE);
+
+        heightFieldCS.Dispatch(kernelSWEFlux, Mathf.CeilToInt(width / 16.0f) + 1, Mathf.CeilToInt(depth / 16.0f) + 1, 1);
+
+        heightFieldCS.SetBuffer(kernelSWE, "F", F_RW);
+        heightFieldCS.SetBuffer(kernelSWE, "U", U_read);
+        heightFieldCS.SetBuffer(kernelSWE, "G", G_RW);
+        heightFieldCS.SetBuffer(kernelSWE, "U_new", U_RW);
+
+        heightFieldCS.Dispatch(kernelSWE, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
+
+        heightFieldCS.SetBuffer(kernelSWEBC, "U_new", U_RW);
+
+        heightFieldCS.Dispatch(kernelSWEBC, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
+
+        U_RW.GetData(U);
+        F_RW.GetData(F);
+        G_RW.GetData(G);
+
+        Mesh mesh = GetComponent<MeshFilter>().mesh;
+        Vector3[] verts = mesh.vertices;
+
+        ComputeBuffer randomXZ = new ComputeBuffer(width * depth, 8);
+        randomXZ.SetData(randomDisplacement);
+        verticesCB.SetData(vertices);
+        heightFieldCS.SetBuffer(kernelSWEVertices, "U", U_RW);
+        heightFieldCS.SetBuffer(kernelSWEVertices, "verticesPosition", verticesCB);
+        heightFieldCS.SetBuffer(kernelSWEVertices, "randomDisplacement", randomXZ);
+
+        heightFieldCS.Dispatch(kernelSWEVertices, Mathf.CeilToInt(verts.Length / 256), 1, 1);
+        verticesCB.GetData(verts);
+
+        mesh.vertices = verts;
+        GetComponent<MeshFilter>().mesh = mesh;
+
+        U_read.Release();
+        F_RW.Release();
+        G_RW.Release();
+        U_RW.Release();
+        randomXZ.Release();
+    }
+
+    //  creates mesh with flat shading
+    private void CreateMesh()
     {
         Vector2[] newUV;
         Vector3[] newVertices;
@@ -391,10 +562,6 @@ public class HeightField : MonoBehaviour
         {
             for (int j = 0; j < depth; j++)
             {
-                if (i != 0 && j != 0 && i != width - 1 && j != depth - 1)
-                    newVertices[i * depth + j] = new Vector3(i * quadSize + randomDisplacement[i * depth + j].x, 0.0f, j * quadSize + randomDisplacement[i * depth + j].y);
-                else
-                    newVertices[i * depth + j] = new Vector3(i * quadSize, hf[i * depth + j].height, j * quadSize);
                 newVertices[i * depth + j] = new Vector3(i * quadSize, 0.0f, j * quadSize);
             }
         }
@@ -428,16 +595,16 @@ public class HeightField : MonoBehaviour
         mesh.vertices = newVertices;
         mesh.triangles = newTriangles;
         mesh.uv = newUV;
-
-        mesh.RecalculateNormals();
+        vertices = newVertices;
+        
         GetComponent<MeshFilter>().mesh = mesh;
         GetComponent<BoxCollider>().size = new Vector3(quadSize * width, maxHeight / 2.0f, quadSize * depth);
         GetComponent<BoxCollider>().center = new Vector3(quadSize * width / 2.0f, maxHeight / 4.0f, quadSize * depth / 2.0f);
     }
 
-    void CreatePlaneMesh()
+    private void CreatePlaneMesh()
     {
-        newMesh = GetComponent<MeshFilter>().mesh;
+        planeMesh = GetComponent<MeshFilter>().mesh;
         //  create plane mesh for reflection
         Vector3[] planeVertices = new Vector3[4];
         Vector3[] planeNormals = new Vector3[4];
@@ -456,12 +623,12 @@ public class HeightField : MonoBehaviour
         planeTriangles[3] = 0;
         planeTriangles[4] = 1;
         planeTriangles[5] = 3;
-        newMesh.vertices = planeVertices;
-        newMesh.triangles = planeTriangles;
-        newMesh.normals = planeNormals;
+        planeMesh.vertices = planeVertices;
+        planeMesh.triangles = planeTriangles;
+        planeMesh.normals = planeNormals;
     }
 
-    void UpdateCameraModes(Camera src, Camera dest)
+    private void UpdateCameraModes(Camera src, Camera dest)
     {
         if (dest == null)
         {
@@ -496,7 +663,7 @@ public class HeightField : MonoBehaviour
     }
 
     // On-demand create any objects we need for water
-    void CreateWaterObjects(Camera currentCamera, out Camera reflectionCamera)
+    private void CreateWaterObjects(Camera currentCamera, out Camera reflectionCamera)
     {
         reflectionCamera = null;
 
@@ -553,7 +720,7 @@ public class HeightField : MonoBehaviour
     }
 
     // Given position/normal of the plane, calculates plane in camera space.
-    Vector4 CameraSpacePlane(Camera cam, Vector3 pos, Vector3 normal, float sideSign)
+    private Vector4 CameraSpacePlane(Camera cam, Vector3 pos, Vector3 normal, float sideSign)
     {
         Vector3 offsetPos = pos + normal * clipPlaneOffset;
         Matrix4x4 m = cam.worldToCameraMatrix;
@@ -562,13 +729,16 @@ public class HeightField : MonoBehaviour
         return new Vector4(cnormal.x, cnormal.y, cnormal.z, -Vector3.Dot(cpos, cnormal));
     }
 
-    //  interpolated height at world position
+    /// <summary>
+    /// Calculates the Y-value of the water-heightfield at the given X- and Z-values of a position in world space.
+    /// </summary>
+    /// <param name="worldPosition">X- and Z- Value will be taken from this Vector3</param>
     public float getHeightAtWorldPosition(Vector3 worldPosition)
     {
         int k, m;
         k = Mathf.Max(Mathf.Min(Mathf.RoundToInt((worldPosition.x - transform.position.x) / quadSize), width - 1), 0);
         m = Mathf.Max(Mathf.Min(Mathf.RoundToInt((worldPosition.z - transform.position.z) / quadSize), depth - 1), 0);
-        
+
         //	get surrounding height values at the vertex position (can be randomly displaced)
         float x1 = hf[k * depth + m].height;
         float x2 = hf[Mathf.Min((k + 1), width - 1) * depth + Mathf.Min(m + 1, depth - 1)].height;

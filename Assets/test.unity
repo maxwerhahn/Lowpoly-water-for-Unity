@@ -259,7 +259,7 @@ Prefab:
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: 1a8e86f8516cbf14b9231b8139c0e5e8, type: 3}
       propertyPath: m_RootOrder
-      value: 4
+      value: 3
       objectReference: {fileID: 0}
     - target: {fileID: 100000, guid: 1a8e86f8516cbf14b9231b8139c0e5e8, type: 3}
       propertyPath: m_Name
@@ -334,7 +334,7 @@ Prefab:
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: a33bf3bdf10e2924196d90efef2b00db, type: 3}
       propertyPath: m_RootOrder
-      value: 3
+      value: 6
       objectReference: {fileID: 0}
     - target: {fileID: 2300000, guid: a33bf3bdf10e2924196d90efef2b00db, type: 3}
       propertyPath: m_Materials.Array.data[0]
@@ -346,11 +346,11 @@ Prefab:
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: a33bf3bdf10e2924196d90efef2b00db, type: 3}
       propertyPath: m_LocalScale.y
-      value: 30.000015
+      value: 30.000046
       objectReference: {fileID: 0}
     - target: {fileID: 400000, guid: a33bf3bdf10e2924196d90efef2b00db, type: 3}
       propertyPath: m_LocalScale.z
-      value: 30.000015
+      value: 30.000046
       objectReference: {fileID: 0}
     m_RemovedComponents: []
   m_ParentPrefab: {fileID: 100100000, guid: a33bf3bdf10e2924196d90efef2b00db, type: 3}
@@ -421,24 +421,25 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 89115b0bda3cb7c4c868dc9170200cb7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  waterMode: 3
   heightFieldCS: {fileID: 7200000, guid: 4953ade53a221db458950ff31d7297c6, type: 3}
   mainCam: {fileID: 1846956667}
-  maxRandomDisplacement: 0
-  width: 32
-  depth: 32
+  maxRandomDisplacement: 1
+  width: 254
+  depth: 254
   quadSize: 128
   speed: 3
   gridSpacing: 1
-  maxHeight: 512
+  maxHeight: 1024
   maxVelocity: 256
-  randomInitialVelocity: 20
+  randomInitialVelocity: 5
   dampingVelocity: 0.9999
   textureSize: 1024
   clipPlaneOffset: 0.07
   reflectLayers:
     serializedVersion: 2
     m_Bits: 4294967295
-  updateEnvironment: 1
+  useLinearEquation: 0
   frictionSWE: 0.01
   epsilon: 0
 --- !u!4 &882867328
@@ -604,7 +605,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
-  m_RootOrder: 5
+  m_RootOrder: 4
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1549272224
 GameObject:
@@ -697,7 +698,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 0}
-  m_RootOrder: 6
+  m_RootOrder: 5
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1812374949
 GameObject:

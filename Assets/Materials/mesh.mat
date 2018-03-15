@@ -127,7 +127,7 @@ Material:
     - g_Glossiness: 0.5
     - g_Metallic: 0
     - g_PointLightIntensity: 0
-    - g_Reflection: 0.242
+    - g_Reflection: 0
     - g_Shininess: 113
     - g_directionalLight: 0
     - g_fQuadSize: 8
@@ -160,7 +160,7 @@ Material:
     - _SpecularColor: {r: 0, g: 0, b: 0, a: 1}
     - _WavesColor: {r: 0, g: 0, b: 0, a: 0.25}
     - _WorldLightDir: {r: 0, g: 0, b: 0, a: 0}
-    - g_Color: {r: 0, g: 0.37931037, b: 1, a: 1}
-    - g_DepthColor: {r: 0, g: 0.9117647, b: 0.9117647, a: 1}
+    - g_Color: {r: 0.015686275, g: 1, b: 0.8784314, a: 1}
+    - g_DepthColor: {r: 0, g: 1, b: 0.734, a: 1}
     - g_LightDir: {r: 1, g: 0.9705882, b: 0.9705882, a: 1}
     - g_SpecColor: {r: 1, g: 1, b: 1, a: 1}

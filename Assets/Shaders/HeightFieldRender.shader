@@ -18,7 +18,6 @@ Shader "Custom/HeightFieldRender" {
 		g_DepthVisible("maximum Depth", Range(1.0, 1000.0)) = 1000.0
 		g_FoamDepth("maximum Foam-Depth", Range(0.0, 1.0)) = 0.1
 		g_DistortionFactor("Distortion", Range(0.0, 500.0)) = 50.0
-		g_PointLightIntensity("PointLightIntensity", Range(0.0, 1000.0)) = 10.0
 		[HideInInspector] _ReflectionTex("Internal Reflection", 2D) = "" {}
 	}
 		SubShader{
@@ -37,7 +36,6 @@ Shader "Custom/HeightFieldRender" {
 		float g_DepthVisible;
 		float g_FoamDepth;
 		float g_DistortionFactor;
-		float g_PointLightIntensity;
 		fixed4 g_Color;
 		fixed4 g_SpecColor;
 		fixed4 g_DepthColor;
@@ -106,7 +104,7 @@ Shader "Custom/HeightFieldRender" {
 			//	pass for directional lights
 		Pass {
 				ZWrite On
-				Cull Off
+				Cull Back
 				Blend SrcAlpha OneMinusSrcAlpha
 
 				Tags{ "LightMode" = "ForwardBase" }
@@ -169,7 +167,8 @@ Shader "Custom/HeightFieldRender" {
 				}
 				return float4(specularReflection + diffuseReflection + UNITY_LIGHTMODEL_AMBIENT * g_Color, g_Color.w);
 			}
-				[maxvertexcount(3)]
+			
+			[maxvertexcount(3)]
 			void geom(triangle v2g p[3], inout TriangleStream<v2g> tristream)
 			{
 				//	create two triangles, using 6 vertices and calulating normals, color, clip and projected positions.

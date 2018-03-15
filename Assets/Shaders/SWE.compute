@@ -1,0 +1,333 @@
+﻿// Each #kernel tells which function to compile; you can have many kernels
+#pragma kernel CSMain
+
+// Create a RenderTexture with enableRandomWrite flag and set it
+// with cs.SetTexture
+RWTexture2D<float4> Result;
+
+[numthreads(8,8,1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+	// TODO: insert actual code here!
+
+	Result[id.xy] = float4(id.x & id.y, (id.x & 15)/15.0, (id.y & 15)/15.0, 0.0);
+}
+
+/*
+[numthreads(16, 16, 1)]
+void updateHeightfieldUsingSWE(uint3 id : SV_DispatchThreadID)
+{
+int i = id.x;
+int j = id.y;
+
+if (i >= g_iWidth || j >= g_iDepth)
+return;
+
+int index = i * g_iDepth + j;
+
+int s = i * g_iDepth + max(0, j - 1);
+int w = max(0,(i - 1)) * g_iDepth + j;
+
+float h = U[index].x;
+float g = B[index];
+float R_hy = pow(abs(h * g / (2 * h + g)), 4.0f/3.0f);
+
+float v = U[index].y / h;
+float u = U[index].z / h;
+
+//float I_Ex = pow(Manning, 2) * sqrt(pow(u,2.0f) + pow(v, 2.0f)) / pow(abs(h), 4.0f / 3.0f);
+//float I_Ey = I_Ex * u;
+//I_Ex *= v;
+float I_Ex = v * v * Manning * Manning / R_hy;
+float I_Ey = u * u * Manning * Manning / R_hy ;
+float I_Sx = 0.0f;
+float I_Sy = 0.0f;
+float3 b_new = float3(0.0f, - g_fGravity * h * (I_Sx + I_Ex), - g_fGravity * h * (I_Sy + I_Ey));
+
+float3 f_iPlus = (F[min(g_iWidth, i + 1) * g_iDepth + j] + F[min(g_iWidth, (i + 2)) * g_iDepth + j]) / 2.0f;
+float3 f_iMinus = (F[w] + F[index]) / 2.0f;
+
+float3 g_iPlus = (G[i * g_iDepth + min(g_iDepth, j + 1)] + G[i * g_iDepth + min(g_iDepth, j + 2)]) / 2.0f;
+float3 g_iMinus = (G[s] + G[index]) / 2.0f;
+
+U_new[index] = U[index] - 0.5f * g_fDeltaTime * (f_iPlus - f_iMinus) / g_fGridSpacing - 0.5f * g_fDeltaTime * (g_iPlus - g_iMinus) / g_fGridSpacing - b_new;
+U_new[index].x = min(max(B[index], U_new[index].x), g_fMaxHeight);
+}
+
+[numthreads(16, 16, 1)]
+void updateFlux(uint3 id : SV_DispatchThreadID) {
+int i = id.x;
+int j = id.y;
+
+if (i <= g_iWidth && j < g_iDepth)
+{
+int indexU = min(i, g_iWidth - 1) * g_iDepth + j;
+int indexUminus =  min(max(0, i - 1), g_iWidth - 1) * g_iDepth +  j;
+
+float h = (U[indexU].x + U[max(0, i - 1)* g_iDepth + j].x) / 2.0f;
+
+float u = (U[indexU].y * sqrt(U[indexU].x) / U[indexU].x + U[indexUminus].y * sqrt(U[indexUminus].x) / U[indexUminus].x)
+/ (sqrt(U[indexUminus].x) + sqrt(U[indexU].x));
+
+float v = (U[indexU].z * sqrt(U[indexU].x) / U[indexU].x + U[indexUminus].z * sqrt(U[indexUminus].x) / U[indexUminus].x)
+/ (sqrt(U[indexUminus].x) + sqrt(U[indexU].x));
+
+float c = sqrt(g_fGravity * h);
+
+float lmd1 = u;
+float lmd2 = lmd1 + c;
+float lmd3 = lmd1 - c;
+
+float lmd2Minuslmd3_Abs = lmd2 * abs(lmd3) - abs(lmd2) * lmd3;
+float lmd1TimesC = 2 * c * abs(lmd1);
+float lmd2minuslmd3 = abs(lmd2) - abs(lmd3);
+
+float3x3 A = 0.5f / c * float3x3(	lmd2Minuslmd3_Abs,							lmd2minuslmd3,						0.0f,
+lmd2 * lmd3 * (abs(lmd3)-abs(lmd2)),		abs(lmd2)*lmd2 - abs(lmd3)*lmd3,	0.0f,
+v*(lmd2Minuslmd3_Abs - lmd1TimesC),			v*(lmd2minuslmd3),					lmd1TimesC);
+float x, y, z;
+x = U[indexU].x;
+y = U[indexU].y;
+z = U[indexU].z;
+float3 f_iPlus = float3(y, y * y / x + g_fGravity * x * x * 0.5f, y * z / h);
+//F[min(g_iWidth, i + 1) * g_iDepth + j];
+x = U[indexUminus].x;
+y = U[indexUminus].y;
+z = U[indexUminus].z;
+float3 f_iMinus = float3(y, y * y / x + g_fGravity * x * x * 0.5f, y * z / h);
+//F[max(0, i - 1) * g_iDepth + j];
+
+F_new[i * g_iDepth + j] = 0.5f * (f_iMinus + f_iPlus) - 0.5f * mul(abs(A), U[indexU] - U[indexUminus]);
+}
+
+if (i < g_iWidth && j <= g_iDepth)
+{
+int indexU = i * g_iDepth + min(j, g_iDepth - 1);
+int indexUminus = i * g_iDepth + min(max(0, j - 1), g_iDepth - 1);
+
+float h = (U[indexU].x + U[indexUminus].x) / 2.0f;
+
+float u = (U[indexU].y * sqrt(U[indexU].x) / U[indexU].x + U[indexUminus].y * sqrt(U[indexUminus].x) / U[indexUminus].x)
+/ (sqrt(U[indexUminus].x) + sqrt(U[indexU].x));
+
+float v = (U[indexU].z * sqrt(U[indexU].x) / U[indexU].x + U[indexUminus].z * sqrt(U[indexUminus].x) / U[indexUminus].x)
+/ (sqrt(U[indexUminus].x) + sqrt(U[indexU].x));
+
+float c = sqrt(g_fGravity * h);
+
+float lmd1 = v;
+float lmd2 = v + c;
+float lmd3 = v - c;
+
+float lmd2Minuslmd3_Abs = lmd2 * abs(lmd3) - abs(lmd2) * lmd3;
+float lmd1TimesC = 2 * c * abs(lmd1);
+float lmd2minuslmd3 = abs(lmd2) - abs(lmd3);
+
+float3x3 B = 0.5f / c * float3x3(	lmd2Minuslmd3_Abs,						0.0f,			lmd2minuslmd3,
+u*(lmd2Minuslmd3_Abs - lmd1TimesC),		lmd1TimesC,		lmd2minuslmd3 * u,
+lmd2 *lmd3 *(abs(lmd3) - abs(lmd2)),	0.0f,			abs(lmd2)*lmd2 - abs(lmd3)*lmd3);
+
+float x, y, z;
+x = U[indexU].x;
+y = U[indexU].y;
+z = U[indexU].z;
+float3 g_iPlus = float3(z, y * z / h, z * z / x + g_fGravity * x * x * 0.5f);
+x = U[indexUminus].x;
+y = U[indexUminus].y;
+z = U[indexUminus].z;
+float3 g_iMinus = float3(z, y * z / h, z * z / x + g_fGravity * x * x * 0.5f);
+
+G_new[i * g_iDepth + j] = 0.5f * (g_iMinus + g_iPlus) - 0.5f * mul(abs(B), U[indexU] - U[indexUminus]);
+}
+}
+/*
+
+float g_fGravity;
+float g_fManning;
+float g_fEpsilon;
+
+float c1;
+float c2;
+float c3;
+float d1;
+float d2;
+float d3;
+
+StructuredBuffer<float3> U : register(t0);				//	width x depth
+StructuredBuffer<float3> V : register(t1);				//	width x depth
+StructuredBuffer<float3> W : register(t2);				//	width + 1 x depth + 1
+
+StructuredBuffer<float3> U_n2R : register(t3);
+StructuredBuffer<float3> V_n2R : register(t4);
+StructuredBuffer<float3> W_n2R : register(t5);
+
+RWStructuredBuffer<float3> V_n1 : register(u0);
+RWStructuredBuffer<float3> W_n1 : register(u1);
+
+RWStructuredBuffer<float3> U_n2 : register(u0);
+RWStructuredBuffer<float3> V_n2 : register(u1);
+RWStructuredBuffer<float3> W_n2 : register(u2);
+
+RWStructuredBuffer<float3> U_new : register(u0);
+RWStructuredBuffer<float3> V_new : register(u1);
+RWStructuredBuffer<float3> W_new : register(u2);
+
+float MindModLimiter(float theta) {
+return max(0, min(theta, 1.0f));
+}
+
+[numthreads(16, 16, 1)]
+void updateVWImplicitOne(uint3 id : SV_DispatchThreadID)
+{
+int i = id.x;
+int j = id.y;
+
+if (i >= g_iWidth || j >= g_iDepth)
+return;
+
+int index = i * g_iDepth + j;
+
+float3 u = U[index];
+
+float h = u.x;
+float3 F_u = float3(u.y, u.y * u.y / h + 0.5f * g_fGravity * h * h, u.y * u.z / h);
+float3 G_u = float3(u.z, u.y * u.z / h, u.z * u.z / h + 0.5f * g_fGravity * h * h);
+
+float3 v_n = V[index];
+float3 w_n = W[index];
+
+float3 S_f;
+float3 S_g;
+
+V_n1[index] = (v_n - g_fDeltaTime / g_fEpsilon * F_u) * (1.0f - g_fDeltaTime / g_fEpsilon);
+W_n1[index] = (w_n - g_fDeltaTime / g_fEpsilon * G_u) * (1.0f - g_fDeltaTime / g_fEpsilon);
+}
+
+[numthreads(16, 16, 1)]
+void updateUVWDiscreteImplicitOne(uint3 id : SV_DispatchThreadID) {
+int i = id.x;
+int j = id.y;
+
+if (i >= g_iWidth || j >= g_iDepth)
+return;
+
+int index = i * g_iDepth + j;
+
+float3 u = U[index];
+
+float h = u.x;
+float u1 = u.y / h;
+float u2 = u.z / h;
+
+float I_Ex = pow(g_fManning, 2) * sqrt(pow(u2, 2.0f) + pow(u1, 2.0f)) / pow(h, 4.0f / 3.0f);
+float I_Ey = I_Ex * u2;
+I_Ex *= u1;
+float I_Sx = 0.0f;
+float I_Sy = 0.0f;
+float3 S_u = float3(0.0f, -g_fGravity * h * (I_Sx + I_Ex), -g_fGravity * h * (I_Sy + I_Ey));
+
+float3x3 D = float3x3(	d1,0.0f,0.0f,
+0.0f,d2,0.0f,
+0.0f,0.0f,d3);
+float3x3 C = float3x3(	c1, 0.0f, 0.0f,
+0.0f, c2, 0.0f,
+0.0f, 0.0f, c3);
+float3x3 invD = float3x3(	1.0f / d1, 0.0f, 0.0f,
+0.0f, 1.0f / d2, 0.0f,
+0.0f, 0.0f, 1.0f / d3);
+float3x3 invC = float3x3(	1.0f/c1, 0.0f, 0.0f,
+0.0f, 1.0f/c2, 0.0f,
+0.0f, 0.0f,1.0f/ c3);
+
+int iPlus = min(g_iWidth - 1,i + 1) * g_iDepth + j;
+int iMinus = max(0, i - 1)* g_iDepth + j;
+int jPlus = i* g_iDepth + min(g_iDepth - 1, j + 1);
+int jMinus = i * g_iDepth +  max(0, j - 1);
+
+float3 v_nHalf = (0.5f * (V[index] + V[iPlus])  - 0.5f * mul(C, U[iPlus] - U[index]) -
+0.5f * (V[index] + V[iMinus]) - 0.5f * mul(C, U[index] - U[iMinus]));
+float3 w_nHalf = (0.5f * (W[index] + W[jPlus])  - 0.5f * mul(D, U[jPlus] - U[index]) -
+0.5f * (W[index] + W[jMinus]) - 0.5f * mul(D, U[index] - U[jMinus]));
+
+float3 u_nHalfI = (0.5f * (U[index] + U[iPlus])  - 0.5f * mul(invC, V[iPlus] - V[index]) -
+0.5f * (U[index] + U[iMinus]) - 0.5f * mul(invC, V[index] - V[iMinus]));
+float3 u_nHalfJ = (0.5f * (U[index] + U[jPlus])  - 0.5f * mul(invD, W[jPlus] - W[index]) -
+0.5f * (U[index] + U[jMinus]) - 0.5f * mul(invD, W[index] - W[jMinus]));
+
+
+float3 u_1 = U[index] - g_fDeltaTime / g_fGridSpacing * ((v_nHalf + w_nHalf)) + g_fDeltaTime * S_u;
+float3 v_1 = V[index] - g_fDeltaTime * mul(mul(C, C), u_nHalfI / g_fGridSpacing);
+float3 w_1 = W[index] - g_fDeltaTime * mul(mul(D, D), u_nHalfJ / g_fGridSpacing);
+
+float3 F_u = float3(u.y, u.y * u.y / h + 0.5f * g_fGravity * h * h, u.y * u.z / h);
+float3 G_u = float3(u.z, u.y * u.z / h, u.z * u.z / h + 0.5f * g_fGravity * h * h);
+
+h = u_1.x;
+float3 F_u2 = float3(u_1.y, u_1.y * u_1.y / h + 0.5f * g_fGravity * h * h, u_1.y * u_1.z / h);
+float3 G_u2 = float3(u_1.z, u_1.y * u_1.z / h, u_1.z * u_1.z / h + 0.5f * g_fGravity * h * h);
+
+U_n2[index] = u_1;
+V_n2[index] = (1.0f + g_fDeltaTime / g_fEpsilon) * (v_1 + F_u2 * g_fDeltaTime / g_fEpsilon - 2 * g_fDeltaTime / g_fEpsilon * (V[index] - F_u));
+W_n2[index] = (1.0f + g_fDeltaTime / g_fEpsilon) * (w_1 + G_u2 * g_fDeltaTime / g_fEpsilon - 2 * g_fDeltaTime / g_fEpsilon * (W[index] - G_u));
+}
+
+[numthreads(16, 16, 1)]
+void updateUVWDiscreteTwo(uint3 id : SV_DispatchThreadID) {
+
+int i = id.x;
+int j = id.y;
+
+if (i >= g_iWidth || j >= g_iDepth)
+return;
+
+int index = i * g_iDepth + j;
+
+float3 u = U[index];
+
+float h = u.x;
+float u1 = u.y / h;
+float u2 = u.z / h;
+
+float I_Ex = pow(g_fManning, 2) * sqrt(pow(u2, 2.0f) + pow(u1, 2.0f)) / pow(h, 4.0f / 3.0f);
+float I_Ey = I_Ex * u2;
+I_Ex *= u1;
+float I_Sx = 0.0f;
+float I_Sy = 0.0f;
+float3 S_u2 = float3(0.0f, -g_fGravity * h * (I_Sx + I_Ex), -g_fGravity * h * (I_Sy + I_Ey));
+
+float3x3 D = float3x3(	d1, 0.0f, 0.0f,
+0.0f, d2, 0.0f,
+0.0f, 0.0f, d3);
+float3x3 C = float3x3(	c1, 0.0f, 0.0f,
+0.0f, c2, 0.0f,
+0.0f, 0.0f, c3);
+float3x3 invD = float3x3(	1.0f / d1, 0.0f, 0.0f,
+0.0f, 1.0f / d2, 0.0f,
+0.0f, 0.0f, 1.0f / d3);
+float3x3 invC = float3x3(	1.0f / c1, 0.0f, 0.0f,
+0.0f, 1.0f / c2, 0.0f,
+0.0f, 0.0f, 1.0f / c3);
+
+int iPlus = min(g_iWidth - 1, i + 1)* g_iDepth + j;
+int iMinus = max(0, i - 1)* g_iDepth + j;
+int jPlus = (i)* g_iDepth + min(g_iDepth - 1, j + 1);
+int jMinus = i * g_iDepth + max(0, j - 1);
+
+float3 v_nHalf = (0.5f * (V_n2R[index] + V_n2R[iPlus])  - 0.5f * mul(C, U_n2R[iPlus] - U_n2R[index]) -
+0.5f * (V_n2R[index] + V_n2R[iMinus]) - 0.5f * mul(C, U_n2R[index] - U_n2R[iMinus]));
+float3 w_nHalf = (0.5f * (W_n2R[index] + W_n2R[jPlus])  - 0.5f * mul(D, U_n2R[jPlus] - U_n2R[index]) -
+0.5f * (W_n2R[index] + W_n2R[jMinus]) - 0.5f * mul(D, U_n2R[index] - U_n2R[jMinus]));
+
+float3 u_nHalfI = (0.5f * (U_n2R[index] + U_n2R[iPlus])  - 0.5f * mul(invC, V_n2R[iPlus] - V_n2R[index]) -
+0.5f * (U_n2R[index] + U_n2R[iMinus]) - 0.5f * mul(invC, V_n2R[index] - V_n2R[iMinus]));
+float3 u_nHalfJ = (0.5f * (U_n2R[index] + U_n2R[jPlus])  - 0.5f * mul(invD, W_n2R[jPlus] - W_n2R[index]) -
+0.5f * (U_n2R[index] + U_n2R[jMinus]) - 0.5f * mul(invD, W_n2R[index] - W_n2R[jMinus]));
+
+float3 u_2 = U_n2R[index] - g_fDeltaTime * ((v_nHalf + w_nHalf) / g_fGridSpacing) + g_fDeltaTime * S_u2;
+float3 v_2 = V_n2R[index] - g_fDeltaTime * mul(mul(C, C), u_nHalfI / g_fGridSpacing);
+float3 w_2 = W_n2R[index] - g_fDeltaTime * mul(mul(D, D), u_nHalfJ / g_fGridSpacing);
+
+U_new[index] = 0.5f * (U[index] + u_2);
+V_new[index] = 0.5f * (V[index] + v_2);
+W_new[index] = 0.5f * (W[index] + w_2);
+}*/
