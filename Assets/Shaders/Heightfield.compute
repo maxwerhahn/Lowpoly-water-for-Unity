@@ -21,9 +21,6 @@ RWStructuredBuffer<HeightField> heightFieldOut : register(u0);
 StructuredBuffer<HeightField> heightFieldIn : register(t0);
 StructuredBuffer<uint> reflectWaves : register(t1);
 
-RWStructuredBuffer<float3> verticesPosition : register(u1);
-StructuredBuffer<float2> randomDisplacement : register(t1);
-
 [numthreads(16, 16, 1)]
 void updateHeightfield(uint3 id : SV_DispatchThreadID)
 {
@@ -93,6 +90,9 @@ void updateHeightfield(uint3 id : SV_DispatchThreadID)
 		heightFieldOut[i * g_iDepth + j].velocity /= 2.0f;
 	}
 }
+
+RWStructuredBuffer<float3> verticesPosition : register(u1);
+StructuredBuffer<float2> randomDisplacement : register(t1);
 
 [numthreads(256, 1, 1)]
 void interpolateVertices(uint3 id : SV_DispatchThreadID) {

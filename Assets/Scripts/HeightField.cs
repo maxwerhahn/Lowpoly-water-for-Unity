@@ -6,7 +6,7 @@ using System;
 public class HeightField : MonoBehaviour
 {
     [ExecuteInEditMode]
-    struct heightField
+    public struct heightField
     {
         public float height;
         public float velocity;
@@ -52,6 +52,8 @@ public class HeightField : MonoBehaviour
     private Vector2[] randomDisplacement;
     private float lastMaxRandomDisplacement;
 
+
+    //  HEIGHTFIELD
     private heightField[] hf;
     private uint[] environment;
     private int kernel;                     ///   kernel for computeshader
@@ -65,6 +67,20 @@ public class HeightField : MonoBehaviour
 
     private uint currentCollision;
 
+
+    //  SWE
+    private Vector3 [] U;
+    private Vector3 [] G;
+    private Vector3 [] F;
+    private float[] B;
+
+    public float frictionSWE;
+
+    private int kernelSWE;
+    private int kernelSWEFlux;
+
+    public float epsilon;
+    
     void Start()
     {
         mainCam.depthTextureMode = DepthTextureMode.Depth;
@@ -75,7 +91,20 @@ public class HeightField : MonoBehaviour
         CreateMesh();
         initBuffers();
 
+        //initValues();
+
+        initValuesSWE();
+        initBuffersSWE();
+
         currentCollision = 1;
+    }
+
+    void OnApplicationQuit()
+    {
+        heightFieldCB.Release();
+        reflectWavesCB.Release();
+        heightFieldCBOut.Release();
+        verticesCB.Release();
     }
 
     void Update()
@@ -84,12 +113,11 @@ public class HeightField : MonoBehaviour
         updateHeightfield();
         updateVertices();
 
-        if (!GetComponent<Renderer>())
-        {
-            return;
-        }
+        //updateFlux();
+        //updateHeightVelocitySWE();
+        //updateHeightVelocity();
 
-        //  if noisy factor change -> initialize randomDisplacements again
+        //  if noisy factor changes -> initialize randomDisplacements again
         if (!Mathf.Approximately(maxRandomDisplacement, lastMaxRandomDisplacement))
         {
             setRandomDisplacementBuffer();
@@ -218,7 +246,7 @@ public class HeightField : MonoBehaviour
                     environment[tempIndices[i].x * depth + n] = currentCollision;
 
                 kTemp = tempIndices[i].y - 1;
-                for (int k = kTemp; k >= 0 ; k--)
+                for (int k = kTemp; k >= 0; k--)
                 {
                     if (environment[tempIndices[i].x * depth + k] == currentCollision)
                     {
@@ -235,7 +263,6 @@ public class HeightField : MonoBehaviour
 
     void setRandomDisplacementBuffer()
     {
-        ComputeBuffer randomXZ = new ComputeBuffer(width * depth, 8);
         randomDisplacement = new Vector2[width * depth];
         for (int i = 0; i < width; i++)
         {
@@ -246,7 +273,6 @@ public class HeightField : MonoBehaviour
                     UnityEngine.Random.Range(-maxRandomDisplacement * quadSize / 3.0f, maxRandomDisplacement * quadSize / 3.0f));
             }
         }
-        randomXZ.SetData(randomDisplacement);
         lastMaxRandomDisplacement = maxRandomDisplacement;
     }
 
@@ -307,6 +333,7 @@ public class HeightField : MonoBehaviour
             currentAvgHeight += hf[i].height;
         }
         currentAvgHeight /= length;
+        clipPlaneOffset = currentAvgHeight;
 
         heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
         heightFieldCS.SetBuffer(kernel, "reflectWaves", reflectWavesCB);
@@ -318,6 +345,7 @@ public class HeightField : MonoBehaviour
         heightFieldCS.SetFloat("g_fMaxHeight", maxHeight);
         heightFieldCS.SetFloat("g_fDamping", dampingVelocity);
         heightFieldCS.SetFloat("g_fAvgHeight", currentAvgHeight);
+        heightFieldCS.SetFloat("g_fGridSpacing", gridSpacing);
 
         heightFieldCS.Dispatch(kernel, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
         heightFieldCBOut.GetData(hf);
@@ -345,6 +373,7 @@ public class HeightField : MonoBehaviour
         mesh.vertices = verts;
         //mesh.RecalculateNormals();
         GetComponent<MeshFilter>().mesh = mesh;
+        randomXZ.Release();
     }
 
     //  creates mesh without flat shading
@@ -402,7 +431,8 @@ public class HeightField : MonoBehaviour
 
         mesh.RecalculateNormals();
         GetComponent<MeshFilter>().mesh = mesh;
-        GetComponent<MeshCollider>().sharedMesh = mesh;
+        GetComponent<BoxCollider>().size = new Vector3(quadSize * width, maxHeight / 2.0f, quadSize * depth);
+        GetComponent<BoxCollider>().center = new Vector3(quadSize * width / 2.0f, maxHeight / 4.0f, quadSize * depth / 2.0f);
     }
 
     void CreatePlaneMesh()
@@ -530,5 +560,29 @@ public class HeightField : MonoBehaviour
         Vector3 cpos = m.MultiplyPoint(offsetPos);
         Vector3 cnormal = m.MultiplyVector(normal).normalized * sideSign;
         return new Vector4(cnormal.x, cnormal.y, cnormal.z, -Vector3.Dot(cpos, cnormal));
+    }
+
+    //  interpolated height at world position
+    public float getHeightAtWorldPosition(Vector3 worldPosition)
+    {
+        int k, m;
+        k = Mathf.Max(Mathf.Min(Mathf.RoundToInt((worldPosition.x - transform.position.x) / quadSize), width - 1), 0);
+        m = Mathf.Max(Mathf.Min(Mathf.RoundToInt((worldPosition.z - transform.position.z) / quadSize), depth - 1), 0);
+        
+        //	get surrounding height values at the vertex position (can be randomly displaced)
+        float x1 = hf[k * depth + m].height;
+        float x2 = hf[Mathf.Min((k + 1), width - 1) * depth + Mathf.Min(m + 1, depth - 1)].height;
+        float x3 = hf[k * depth + Mathf.Min(m + 1, depth - 1)].height;
+        float x4 = hf[Mathf.Min((k + 1), width - 1) * depth + m].height;
+
+        //	get x and y value between 0 and 1 for interpolation
+        float x = ((worldPosition.x - transform.position.x) / quadSize - k);
+        float y = ((worldPosition.z - transform.position.z) / quadSize - m);
+
+        //	bilinear interpolation to get height at vertex i
+        //	note if x == 0 and y == 0 vertex position is at heightfield position.
+        float resultingHeight = (x1 * (1 - x) + x4 * (x)) * (1 - y) + (x3 * (1 - x) + x2 * (x)) * (y);
+
+        return resultingHeight;
     }
 }

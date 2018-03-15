@@ -17,7 +17,7 @@ Shader "Custom/HeightFieldRender" {
 		g_Shininess("Shininess", Range(0.0, 2000.0)) = 20.0
 		g_DepthVisible("maximum Depth", Range(1.0, 1000.0)) = 1000.0
 		g_FoamDepth("maximum Foam-Depth", Range(0.0, 1.0)) = 0.1
-		g_DistortionFactor("Distortion", Range(0.0, 200.0)) = 50.0
+		g_DistortionFactor("Distortion", Range(0.0, 500.0)) = 50.0
 		g_PointLightIntensity("PointLightIntensity", Range(0.0, 1000.0)) = 10.0
 		[HideInInspector] _ReflectionTex("Internal Reflection", 2D) = "" {}
 	}
@@ -88,7 +88,7 @@ Shader "Custom/HeightFieldRender" {
 			float sceneZ = LinearEyeDepth(tex2Dproj(_CameraDepthTexture, UNITY_PROJ_COORD(i.projPos)));
 			float diff = (abs(sceneZ - depth));
 			float4 uv1 = i.refl;
-			uv1.xy += i.normal.xz * g_DistortionFactor;
+			uv1.xy -= i.normal.zx * g_DistortionFactor;
 			float4 refl = tex2Dproj(_ReflectionTex, UNITY_PROJ_COORD(uv1));
 
 			//	if an object is close -> change color
@@ -184,7 +184,6 @@ Shader "Custom/HeightFieldRender" {
 				float3 n = normalize(cross(pos1 - pos, pos2 - pos));
 				float3 avgPos = (pos + pos1 + pos2) / 3.0f;
 				float4 color = lighting(avgPos, n);
-				float4 reflPos = ComputeNonStereoScreenPos(UnityObjectToClipPos(avgPos));
 
 				o.vertex = UnityObjectToClipPos(pos);
 				o.lightingColor = color;
