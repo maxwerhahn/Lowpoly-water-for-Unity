@@ -91,11 +91,6 @@ public class HeightField : MonoBehaviour
         CreateMesh();
         initBuffers();
 
-        //initValues();
-
-        initValuesSWE();
-        initBuffersSWE();
-
         currentCollision = 1;
     }
 
@@ -112,11 +107,7 @@ public class HeightField : MonoBehaviour
         //  update heightfield and vertices
         updateHeightfield();
         updateVertices();
-
-        //updateFlux();
-        //updateHeightVelocitySWE();
-        //updateHeightVelocity();
-
+        
         //  if noisy factor changes -> initialize randomDisplacements again
         if (!Mathf.Approximately(maxRandomDisplacement, lastMaxRandomDisplacement))
         {
