@@ -101,6 +101,9 @@ StructuredBuffer<float2> randomDisplacement : register(t1);
 [numthreads(256, 1, 1)]
 void interpolateVertices(uint3 id : SV_DispatchThreadID) {
 	uint i = id.x;
+
+	if (i >= g_iWidth * g_iDepth)
+		return;
 	float3 pos = verticesPosition[i];
 	uint k, m = 0;
 
@@ -219,6 +222,9 @@ void applyBC(uint3 id : SV_DispatchThreadID) {
 [numthreads(256, 1, 1)]
 void interpolateVerticesSWE(uint3 id : SV_DispatchThreadID) {
 	uint i = id.x;
+	if (i >= g_iWidth * g_iDepth)
+		return;
+
 	float3 pos = verticesPosition[i];
 	uint k, m = 0;
 

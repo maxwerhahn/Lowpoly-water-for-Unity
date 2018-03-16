@@ -397,7 +397,7 @@ GameObject:
   - component: {fileID: 882867331}
   - component: {fileID: 882867330}
   m_Layer: 4
-  m_Name: HeightField
+  m_Name: Water
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -424,22 +424,22 @@ MonoBehaviour:
   waterMode: 3
   heightFieldCS: {fileID: 7200000, guid: 4953ade53a221db458950ff31d7297c6, type: 3}
   mainCam: {fileID: 1846956667}
-  maxRandomDisplacement: 1
-  width: 254
-  depth: 254
-  quadSize: 128
-  speed: 3
-  gridSpacing: 1
-  maxHeight: 1024
-  maxVelocity: 256
-  randomInitialVelocity: 5
-  dampingVelocity: 0.9999
   textureSize: 1024
   clipPlaneOffset: 0.07
   reflectLayers:
     serializedVersion: 2
     m_Bits: 4294967295
-  useLinearEquation: 0
+  maxRandomDisplacement: 1
+  width: 254
+  depth: 254
+  quadSize: 32
+  speed: 4
+  gridSpacing: 2
+  maxHeight: 1024
+  maxVelocity: 256
+  randomInitialVelocity: 5
+  dampingVelocity: 0.9999
+  useLinearEquation: 1
   frictionSWE: 0.01
   epsilon: 0
 --- !u!4 &882867328

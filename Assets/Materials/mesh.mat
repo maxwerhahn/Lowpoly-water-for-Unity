@@ -127,7 +127,7 @@ Material:
     - g_Glossiness: 0.5
     - g_Metallic: 0
     - g_PointLightIntensity: 0
-    - g_Reflection: 0
+    - g_Reflection: 0.2
     - g_Shininess: 113
     - g_directionalLight: 0
     - g_fQuadSize: 8

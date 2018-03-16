@@ -46,9 +46,7 @@ Shader "Custom/HeightFieldRender" {
 
 		uniform sampler2D _CameraDepthTexture;
 		sampler2D _ReflectionTex;
-
-		StructuredBuffer<float2> g_HeightField : register(t1);
-
+		
 			struct appdata {
 			float4 vertex : POSITION;
 			float3 normal : NORMAL;

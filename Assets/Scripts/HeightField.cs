@@ -42,6 +42,20 @@ public class HeightField : MonoBehaviour
     /// </summary>
     public Camera mainCam;
 
+
+    /// <summary>
+    /// Texture size of the reflection
+    /// </summary>       
+    public int textureSize = 256;
+    /// <summary>
+    /// Reflection plane offset
+    /// </summary>       
+    public float clipPlaneOffset = 0.07f;
+    /// <summary>
+    /// Layermask to ignore certain layers
+    /// </summary>       
+    public LayerMask reflectLayers = -1;
+
     /// <summary>
     /// The maximum random displacement of the vertices of the generated mesh
     /// </summary>
@@ -87,25 +101,13 @@ public class HeightField : MonoBehaviour
     /// Damping factor to reduce artifacts
     /// </summary>       
     public float dampingVelocity;
-
-    /// <summary>
-    /// Texture size of the reflection
-    /// </summary>       
-    public int textureSize = 256;
-    /// <summary>
-    /// Reflection plane offset
-    /// </summary>       
-    public float clipPlaneOffset = 0.07f;
-    /// <summary>
-    /// Layermask to ignore certain layers
-    /// </summary>       
-    public LayerMask reflectLayers = -1;
     /// <summary>
     /// chooses updatemode for the heightField
     /// </summary>    
     public bool useLinearEquation;
 
     //  private variables
+    private ComputeBuffer randomXZ;
     private ComputeBuffer heightFieldCB;
     private ComputeBuffer reflectWavesCB;
     private ComputeBuffer heightFieldCBOut;
@@ -131,6 +133,11 @@ public class HeightField : MonoBehaviour
     private uint currentCollision;
 
     //  SWE
+    private ComputeBuffer U_read;
+    private ComputeBuffer U_RW;
+    private ComputeBuffer F_RW;
+    private ComputeBuffer G_RW;
+
     private Vector3[] U;
     private Vector3[] G;
     private Vector3[] F;
@@ -159,6 +166,7 @@ public class HeightField : MonoBehaviour
 
         CreatePlaneMesh();
         initHeightField();
+        randomXZ = new ComputeBuffer(width * depth, 8);
         setRandomDisplacementBuffer();
         CreateMesh();
         initBuffers();
@@ -175,6 +183,11 @@ public class HeightField : MonoBehaviour
         reflectWavesCB.Release();
         heightFieldCBOut.Release();
         verticesCB.Release();
+        U_read.Release();
+        F_RW.Release();
+        G_RW.Release();
+        U_RW.Release();
+        randomXZ.Release();
     }
 
     void Update()
@@ -268,7 +281,6 @@ public class HeightField : MonoBehaviour
         {
             if (waterMode == WaterMode.ReflAndObstcl || waterMode == WaterMode.Obstacles)
             {
-                //environment = new uint[width * depth];
                 //  temporary indices (collision points)
                 int2[] tempIndices = new int2[collision.contacts.Length];
                 for (int i = 0; i < collision.contacts.Length; i++)
@@ -347,6 +359,7 @@ public class HeightField : MonoBehaviour
             }
         }
         lastMaxRandomDisplacement = maxRandomDisplacement;
+        randomXZ.SetData(randomDisplacement);
     }
 
     private void initHeightField()
@@ -395,18 +408,24 @@ public class HeightField : MonoBehaviour
         Shader.SetGlobalInt("g_iWidth", width);
     }
 
+
     //  dispatch of compute shader
     private void updateHeightfield()
     {
-        //  calculate average of all points in the heightfield (might be unecessary)
+        //  calculate approximate average of all points in the heightfield (might be unecessary)
         float currentAvgHeight = 0.0f;
-        int length = Math.Min(hf.Length, 512);
+        int length = Math.Min(depth, width);
         for (int i = 0; i < length; i++)
         {
-            currentAvgHeight += hf[i].height;
+            currentAvgHeight += hf[i * depth + i].height;
         }
-        currentAvgHeight /= length;
+        for (int i = length - 1; i >= 0; i--)
+        {
+            currentAvgHeight += hf[i * depth + i].height;
+        }
+        currentAvgHeight /= (length * 2f);
         clipPlaneOffset = currentAvgHeight;
+        
 
         heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
         heightFieldCS.SetBuffer(kernel, "reflectWaves", reflectWavesCB);
@@ -418,52 +437,39 @@ public class HeightField : MonoBehaviour
         heightFieldCS.SetFloat("g_fMaxHeight", maxHeight);
         heightFieldCS.SetFloat("g_fDamping", dampingVelocity);
         heightFieldCS.SetFloat("g_fAvgHeight", currentAvgHeight);
-        heightFieldCS.SetFloat("g_fGridSpacing", gridSpacing);
+        heightFieldCS.SetFloat("g_fGridSpacing", Mathf.Max(gridSpacing, 1f));
 
         heightFieldCS.Dispatch(kernel, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
         heightFieldCBOut.GetData(hf);
         heightFieldCB.SetData(hf);
-        Shader.SetGlobalBuffer("g_HeightField", heightFieldCBOut);
-        environment = new uint[width * depth];
+        if(waterMode == WaterMode.Obstacles || waterMode == WaterMode.ReflAndObstcl)
+            environment = new uint[width * depth];
     }
 
     private void updateVertices()
     {
         Mesh mesh = GetComponent<MeshFilter>().mesh;
         Vector3[] verts = mesh.vertices;
-
-        ComputeBuffer randomXZ = new ComputeBuffer(width * depth, 8);
-        randomXZ.SetData(randomDisplacement);
+        
         verticesCB.SetData(vertices);
         heightFieldCS.SetBuffer(kernelVertices, "heightFieldIn", heightFieldCB);
         heightFieldCS.SetBuffer(kernelVertices, "verticesPosition", verticesCB);
         heightFieldCS.SetBuffer(kernelVertices, "randomDisplacement", randomXZ);
 
-        heightFieldCS.Dispatch(kernelVertices, Mathf.CeilToInt(verts.Length / 256), 1, 1);
+        heightFieldCS.Dispatch(kernelVertices, Mathf.CeilToInt(verts.Length / 256) + 1, 1, 1);
         verticesCB.GetData(verts);
 
         mesh.vertices = verts;
         //mesh.RecalculateNormals();
         GetComponent<MeshFilter>().mesh = mesh;
-        randomXZ.Release();
     }
 
     private void initValuesSWE()
     {
         U = new Vector3[width * depth];
-        F = new Vector3[(width + 1) * (depth)];
-        G = new Vector3[(width) * (depth + 1)];
+        F = new Vector3[(width) * (depth)];
+        G = new Vector3[(width) * (depth)];
         B = new float[width * depth];
-
-        U[(int)(width / 2f * depth + depth / 2f)].x = maxHeight;
-        U[(int)((width / 2f + 1) * depth + depth / 2f + 1)].x = maxHeight;
-        U[(int)((width / 2f + 1) * depth + depth / 2f)].x = maxHeight;
-        U[(int)(width / 2f * depth + depth / 2f + 1)].x = maxHeight;
-        U[(int)((width / 2f + 1) * depth + depth / 2f - 1)].x = maxHeight;
-        U[(int)((width / 2f - 1) * depth + depth / 2f + 1)].x = maxHeight;
-        U[(int)((width / 2f - 1) * depth + depth / 2f - 1)].x = maxHeight;
-        U[(int)((width / 2f - 1) * depth + depth / 2f)].x = maxHeight;
-        U[(int)(width / 2f * depth + depth / 2f - 1)].x = maxHeight;
 
         for (int i = 0; i < width; i++)
         {
@@ -471,10 +477,10 @@ public class HeightField : MonoBehaviour
             {
                 float x = (i - width / 2.0f) * quadSize;
                 float y = (j - depth / 2.0f) * quadSize;
-                if (Mathf.Sqrt(x * x + y * y) < Mathf.Sqrt(quadSize * width /4.0f) * Mathf.Min(quadSize, quadSize))
-                    U[i * depth + j].x = maxHeight/2.0f;
+                if (Mathf.Sqrt(x * x + y * y) < (quadSize * width / 4.0f))
+                    U[i * depth + j].x = maxHeight;
                 else
-                    U[i * depth + j].x = 1.0f;
+                    U[i * depth + j].x = 10.0f;
             }
         }
         for (int i = 0; i < B.Length; i++)
@@ -489,16 +495,14 @@ public class HeightField : MonoBehaviour
         kernelSWEBC = heightFieldCS.FindKernel("applyBC");
         kernelSWEFlux = heightFieldCS.FindKernel("updateFlux");
         kernelSWEVertices = heightFieldCS.FindKernel("interpolateVerticesSWE");
-    }
+        U_read = new ComputeBuffer(U.Length, 12);
+        U_RW = new ComputeBuffer(U.Length, 12);
+        F_RW = new ComputeBuffer(F.Length, 12);
+        G_RW = new ComputeBuffer(G.Length, 12);
+}
 
     private void updateHeightVelocitySWE()
     {
-        ComputeBuffer U_read = new ComputeBuffer(U.Length, 12);
-        ComputeBuffer U_RW = new ComputeBuffer(U.Length, 12);
-
-        ComputeBuffer F_RW = new ComputeBuffer(F.Length, 12);
-        ComputeBuffer G_RW = new ComputeBuffer(G.Length, 12);
-
         U_read.SetData(U);
 
         heightFieldCS.SetBuffer(kernelSWEFlux, "F_new", F_RW);
@@ -510,17 +514,20 @@ public class HeightField : MonoBehaviour
         heightFieldCS.SetFloat("g_fDeltaTime", Time.deltaTime);
         heightFieldCS.SetFloat("g_fManning", frictionSWE);
 
-        heightFieldCS.Dispatch(kernelSWEFlux, Mathf.CeilToInt(width / 16.0f) + 1, Mathf.CeilToInt(depth / 16.0f) + 1, 1);
+        //  calculate fluxes
+        heightFieldCS.Dispatch(kernelSWEFlux, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
 
         heightFieldCS.SetBuffer(kernelSWE, "F", F_RW);
         heightFieldCS.SetBuffer(kernelSWE, "U", U_read);
         heightFieldCS.SetBuffer(kernelSWE, "G", G_RW);
         heightFieldCS.SetBuffer(kernelSWE, "U_new", U_RW);
 
+        //  update height and velocites using flux
         heightFieldCS.Dispatch(kernelSWE, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
 
         heightFieldCS.SetBuffer(kernelSWEBC, "U_new", U_RW);
 
+        //  apply boundary conditions to the height field
         heightFieldCS.Dispatch(kernelSWEBC, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
 
         U_RW.GetData(U);
@@ -528,35 +535,32 @@ public class HeightField : MonoBehaviour
         G_RW.GetData(G);
 
         float currentAvgHeight = 0.0f;
-        int length = Math.Min(U.Length, 512);
+        int length = Math.Min(depth, width);
         for (int i = 0; i < length; i++)
         {
-            currentAvgHeight += U[i].x;
+            currentAvgHeight += U[i * depth + i].x;
         }
-        currentAvgHeight /= length;
+        for (int i = length - 1; i>= 0; i--)
+        {
+            currentAvgHeight += U[i * depth + i].x;
+        }
+        currentAvgHeight /= (length * 2f);
         clipPlaneOffset = currentAvgHeight;
 
         Mesh mesh = GetComponent<MeshFilter>().mesh;
         Vector3[] verts = mesh.vertices;
-
-        ComputeBuffer randomXZ = new ComputeBuffer(width * depth, 8);
-        randomXZ.SetData(randomDisplacement);
+        
         verticesCB.SetData(vertices);
         heightFieldCS.SetBuffer(kernelSWEVertices, "U", U_RW);
         heightFieldCS.SetBuffer(kernelSWEVertices, "verticesPosition", verticesCB);
         heightFieldCS.SetBuffer(kernelSWEVertices, "randomDisplacement", randomXZ);
 
-        heightFieldCS.Dispatch(kernelSWEVertices, Mathf.CeilToInt(verts.Length / 256), 1, 1);
+        //  interpolate between height values for vertices
+        heightFieldCS.Dispatch(kernelSWEVertices, Mathf.CeilToInt(verts.Length / 256) + 1, 1, 1);
         verticesCB.GetData(verts);
 
         mesh.vertices = verts;
         GetComponent<MeshFilter>().mesh = mesh;
-
-        U_read.Release();
-        F_RW.Release();
-        G_RW.Release();
-        U_RW.Release();
-        randomXZ.Release();
     }
 
     //  creates mesh with flat shading
