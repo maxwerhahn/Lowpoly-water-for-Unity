@@ -25,6 +25,8 @@ uint g_iDepth;			//	depth of the heightfield
 uint g_iWidth;			//	width "-"
 float g_fGravity;
 float g_fManning;
+float g_fDx;
+float g_fDy;
 
 RWStructuredBuffer<HeightField> heightFieldOut : register(u0);
 StructuredBuffer<HeightField> heightFieldIn : register(t0);
@@ -159,8 +161,7 @@ void updateHeightfieldUsingSWE(uint3 id : SV_DispatchThreadID)
 
 	if (i >= g_iWidth - 1 || j >= g_iDepth - 1 || i <= 0 || j <= 0)
 		return;
-	float dx = g_fGridSpacing / g_iWidth;
-	float dy = g_fGridSpacing / g_iDepth;
+
 	float dt;
 	if (g_fDeltaTime * 0.01f > 0.0005f)
 		dt = 0.0005f;
@@ -173,8 +174,9 @@ void updateHeightfieldUsingSWE(uint3 id : SV_DispatchThreadID)
 	int e = (i + 1) * g_iDepth + j;
 	int n = i * g_iDepth + j + 1;
 
+	//	integrate
 	U_new[index] = 0.25f * (U[s] + U[w] + U[e] + U[n])
-		- 0.5f * dt / dx * (F[e] - F[index]) - 0.5f * dt / dy * (G[n] - G[index]);
+		- 0.5f * dt / g_fDx * (F[e] - F[index]) - 0.5f * dt / g_fDy * (G[n] - G[index]);
 }
 
 [numthreads(16, 16, 1)]

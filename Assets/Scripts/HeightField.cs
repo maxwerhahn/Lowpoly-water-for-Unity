@@ -102,9 +102,13 @@ public class HeightField : MonoBehaviour
     /// </summary>       
     public float dampingVelocity;
     /// <summary>
-    /// chooses updatemode for the heightField
+    /// Chooses updatemode for the heightField
     /// </summary>    
     public bool useLinearEquation;
+    /// <summary>
+    /// Friction of the bed for SWE version
+    /// </summary>   
+    public float frictionSWE;
 
     //  private variables
     private ComputeBuffer randomXZ;
@@ -146,15 +150,11 @@ public class HeightField : MonoBehaviour
     private float dx;
     private float dy;
 
-    public float frictionSWE;
-
     private int kernelSWE;
     private int kernelSWEFlux;
     private int kernelSWEBC;
     private int kernelSWEVertices;
-
-    public float epsilon;
-    
+        
     private void Start()
     {
         Initialize();
@@ -487,6 +487,10 @@ public class HeightField : MonoBehaviour
         {
             B[i] = 10;
         }
+        dx = quadSize / width;
+        dy = quadSize / depth;
+        heightFieldCS.SetFloat("g_fDx", dx);
+        heightFieldCS.SetFloat("g_fDy", dy);
     }
 
     private void initBuffersSWE()
