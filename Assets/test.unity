@@ -432,14 +432,14 @@ MonoBehaviour:
   maxRandomDisplacement: 1
   width: 254
   depth: 254
-  quadSize: 32
+  quadSize: 64
   speed: 4
   gridSpacing: 2
   maxHeight: 1024
   maxVelocity: 256
   randomInitialVelocity: 5
   dampingVelocity: 0.9999
-  useLinearEquation: 1
+  useLinearEquation: 0
   frictionSWE: 0.01
   epsilon: 0
 --- !u!4 &882867328

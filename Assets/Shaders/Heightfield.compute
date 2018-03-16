@@ -143,6 +143,14 @@ RWStructuredBuffer<float3> U_new : register(u0);		//	width x depth
 RWStructuredBuffer<float3> G_new : register(u1);		//	width x depth + 1
 RWStructuredBuffer<float3> F_new : register(u2);		//	width + 1 x depth
 
+float3 computeBedSlope(float h, int index) {
+	return float3(0.0f, -g_fGravity * h * B[index], -g_fGravity * h * B[index]);
+}
+float3 computeBedFriction(float u, float v) {
+	float constant = -g_fGravity * sqrt(u*u + v*v) * g_fManning * g_fManning;
+	return float3(0.0f, u * constant, v * constant);
+}
+
 [numthreads(16, 16, 1)]
 void updateHeightfieldUsingSWE(uint3 id : SV_DispatchThreadID)
 {
@@ -153,7 +161,11 @@ void updateHeightfieldUsingSWE(uint3 id : SV_DispatchThreadID)
 		return;
 	float dx = g_fGridSpacing / g_iWidth;
 	float dy = g_fGridSpacing / g_iDepth;
-	float dt = min(g_fDeltaTime * 0.02f, min(dx, dy) * 0.01f);
+	float dt;
+	if (g_fDeltaTime * 0.01f > 0.0005f)
+		dt = 0.0005f;
+	else 
+		dt = g_fDeltaTime * 0.01f;
 	int index = i * g_iDepth + j;
 
 	int s = i * g_iDepth + j - 1;
@@ -162,7 +174,7 @@ void updateHeightfieldUsingSWE(uint3 id : SV_DispatchThreadID)
 	int n = i * g_iDepth + j + 1;
 
 	U_new[index] = 0.25f * (U[s] + U[w] + U[e] + U[n])
-		- 0.5f * dt / dx * (F[e] - F[w]) - 0.5f * dt / dy * (G[n] - G[s]);
+		- 0.5f * dt / dx * (F[e] - F[index]) - 0.5f * dt / dy * (G[n] - G[index]);
 }
 
 [numthreads(16, 16, 1)]
@@ -170,20 +182,26 @@ void updateFlux(uint3 id : SV_DispatchThreadID) {
 	int i = id.x;
 	int j = id.y;
 
-	if (i >= g_iWidth || j >= g_iDepth)
-		return;
-
 	int index = i * g_iDepth + j;
-	float h = U_new[index].x;
-	float u = U_new[index].y / h;
-	float v = U_new[index].z / h;
+	if (i <= g_iWidth && j < g_iDepth) {
+		float3 uH = (U_new[index] + U_new[min(g_iWidth - 1, i + 1) * g_iDepth + j]) * 0.5f;
+		float h = uH.x;
+		float u = uH.y / h;
+		float v = uH.z / h;
 
-	F_new[index].x = h*u;
-	F_new[index].y = h*u*u + 0.5f*g_fGravity*h*h;
-	F_new[index].z = h*v*u;
-	G_new[index].x = h*v;
-	G_new[index].y = h*v*u;
-	G_new[index].z = h*v*v + 0.5f*g_fGravity*h*h;	
+		F_new[index].x = h*u;
+		F_new[index].y = h*u*u + 0.5f*g_fGravity*h*h;
+		F_new[index].z = h*v*u;
+	}
+	if (i < g_iWidth && j <= g_iDepth) {
+		float3 uH = (U_new[index] + U_new[i * g_iDepth + min(g_iDepth - 1, j + 1)]) * 0.5f;
+		float h = uH.x;
+		float u = uH.y / h;
+		float v = uH.z / h;
+		G_new[index].x = h*v;
+		G_new[index].y = h*v*u;
+		G_new[index].z = h*v*v + 0.5f*g_fGravity*h*h;
+	}
 }
 
 [numthreads(16,16,1)]

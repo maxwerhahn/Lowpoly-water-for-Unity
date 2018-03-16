@@ -467,8 +467,8 @@ public class HeightField : MonoBehaviour
     private void initValuesSWE()
     {
         U = new Vector3[width * depth];
-        F = new Vector3[(width) * (depth)];
-        G = new Vector3[(width) * (depth)];
+        F = new Vector3[(width + 1) * (depth)];
+        G = new Vector3[(width) * (depth + 1)];
         B = new float[width * depth];
 
         for (int i = 0; i < width; i++)
