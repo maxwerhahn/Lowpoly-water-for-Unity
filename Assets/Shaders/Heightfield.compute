@@ -216,24 +216,24 @@ void applyBC(uint3 id : SV_DispatchThreadID) {
 
 	int index = i * g_iDepth + j;
 
-	int s = i * g_iDepth + j - 1;
-	int w = (i - 1) * g_iDepth + j;
-	int e = (i + 1) * g_iDepth + j;
-	int n = i * g_iDepth + j + 1;
 
 	if (i == 0) {
+		int e = (i + 1) * g_iDepth + j;
 		U_new[index] = U_new[e];
 		U_new[index].y = -U_new[index].y;
 	}
 	else if (i == g_iWidth - 1) {
+		int w = (i - 1) * g_iDepth + j;
 		U_new[index] = U_new[w];
 		U_new[index].y = -U_new[index].y;
 	}
 	else if (j == 0) {
+		int n = i * g_iDepth + j + 1;
 		U_new[index] = U_new[n];
 		U_new[index].z = -U_new[index].z;
 	}
 	else if (j == g_iDepth - 1) {
+		int s = i * g_iDepth + j - 1;
 		U_new[index] = U_new[s];
 		U_new[index].z = -U_new[index].z;
 	}
