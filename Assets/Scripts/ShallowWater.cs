@@ -24,7 +24,7 @@ public class ShallowWater : MonoBehaviour
     /// <summary>
     /// Compute Shader for heightField updates
     /// </summary>
-    public ComputeShader heightFieldCS;
+    public ComputeShader sweCS;
 
     /// <summary>
     /// The maximum random displacement of the vertices of the generated mesh
@@ -146,16 +146,19 @@ public class ShallowWater : MonoBehaviour
         }
         dx = quadSize / width;
         dy = quadSize / depth;
-        heightFieldCS.SetFloat("g_fDx", dx);
-        heightFieldCS.SetFloat("g_fDy", dy);
+        sweCS.SetFloat("g_fDx", dx);
+        sweCS.SetFloat("g_fDy", dy);
+        sweCS.SetFloat("g_fQuadSize", quadSize);
+        sweCS.SetInt("g_iDepth", depth);
+        sweCS.SetInt("g_iWidth", width);
     }
 
     private void initBuffersSWE()
     {
-        kernelSWE = heightFieldCS.FindKernel("updateHeightfieldUsingSWE");
-        kernelSWEBC = heightFieldCS.FindKernel("applyBC");
-        kernelSWEFlux = heightFieldCS.FindKernel("updateFlux");
-        kernelSWEVertices = heightFieldCS.FindKernel("interpolateVerticesSWE");
+        kernelSWE = sweCS.FindKernel("updateHeightfieldUsingSWE");
+        kernelSWEBC = sweCS.FindKernel("applyBC");
+        kernelSWEFlux = sweCS.FindKernel("updateFlux");
+        kernelSWEVertices = sweCS.FindKernel("interpolateVerticesSWE");
         U_read = new ComputeBuffer(U.Length, 12);
         U_RW = new ComputeBuffer(U.Length, 12);
         F_RW = new ComputeBuffer(F.Length, 12);
@@ -167,30 +170,30 @@ public class ShallowWater : MonoBehaviour
     {
         U_read.SetData(U);
 
-        heightFieldCS.SetBuffer(kernelSWEFlux, "F_new", F_RW);
-        heightFieldCS.SetBuffer(kernelSWEFlux, "G_new", G_RW);
-        heightFieldCS.SetBuffer(kernelSWEFlux, "U_new", U_read);
+        sweCS.SetBuffer(kernelSWEFlux, "F_new", F_RW);
+        sweCS.SetBuffer(kernelSWEFlux, "G_new", G_RW);
+        sweCS.SetBuffer(kernelSWEFlux, "U_new", U_read);
 
-        heightFieldCS.SetFloat("g_fGravity", Mathf.Abs(Physics.gravity.y));
-        heightFieldCS.SetFloat("g_fGridSpacing", quadSize);
-        heightFieldCS.SetFloat("g_fDeltaTime", Time.deltaTime);
-        heightFieldCS.SetFloat("g_fManning", frictionSWE);
+        sweCS.SetFloat("g_fGravity", Mathf.Abs(Physics.gravity.y));
+        sweCS.SetFloat("g_fGridSpacing", quadSize);
+        sweCS.SetFloat("g_fDeltaTime", Time.deltaTime);
+        sweCS.SetFloat("g_fManning", frictionSWE);
 
         //  calculate fluxes
-        heightFieldCS.Dispatch(kernelSWEFlux, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
+        sweCS.Dispatch(kernelSWEFlux, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
 
-        heightFieldCS.SetBuffer(kernelSWE, "F", F_RW);
-        heightFieldCS.SetBuffer(kernelSWE, "U", U_read);
-        heightFieldCS.SetBuffer(kernelSWE, "G", G_RW);
-        heightFieldCS.SetBuffer(kernelSWE, "U_new", U_RW);
+        sweCS.SetBuffer(kernelSWE, "F", F_RW);
+        sweCS.SetBuffer(kernelSWE, "U", U_read);
+        sweCS.SetBuffer(kernelSWE, "G", G_RW);
+        sweCS.SetBuffer(kernelSWE, "U_new", U_RW);
 
         //  update height and velocites using flux
-        heightFieldCS.Dispatch(kernelSWE, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
+        sweCS.Dispatch(kernelSWE, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
 
-        heightFieldCS.SetBuffer(kernelSWEBC, "U_new", U_RW);
+        sweCS.SetBuffer(kernelSWEBC, "U_new", U_RW);
 
         //  apply boundary conditions to the height field
-        heightFieldCS.Dispatch(kernelSWEBC, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
+        sweCS.Dispatch(kernelSWEBC, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
 
         U_RW.GetData(U);
         F_RW.GetData(F);
@@ -212,12 +215,12 @@ public class ShallowWater : MonoBehaviour
         Vector3[] verts = mesh.vertices;
 
         verticesCB.SetData(vertices);
-        heightFieldCS.SetBuffer(kernelSWEVertices, "U", U_RW);
-        heightFieldCS.SetBuffer(kernelSWEVertices, "verticesPosition", verticesCB);
-        heightFieldCS.SetBuffer(kernelSWEVertices, "randomDisplacement", randomXZ);
+        sweCS.SetBuffer(kernelSWEVertices, "U", U_RW);
+        sweCS.SetBuffer(kernelSWEVertices, "verticesPosition", verticesCB);
+        sweCS.SetBuffer(kernelSWEVertices, "randomDisplacement", randomXZ);
 
         //  interpolate between height values for vertices
-        heightFieldCS.Dispatch(kernelSWEVertices, Mathf.CeilToInt(verts.Length / 256) + 1, 1, 1);
+        sweCS.Dispatch(kernelSWEVertices, Mathf.CeilToInt(verts.Length / 256) + 1, 1, 1);
         verticesCB.GetData(verts);
 
         mesh.vertices = verts;
