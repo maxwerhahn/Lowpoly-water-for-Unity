@@ -63,6 +63,7 @@ public class ShallowWater : MonoBehaviour
 
     private Vector2[] randomDisplacement;
     private float lastMaxRandomDisplacement;
+    private float averageHeight;
 
     private Mesh planeMesh;
     private Vector3[] vertices;
@@ -85,6 +86,8 @@ public class ShallowWater : MonoBehaviour
     private int kernelSWEBC;
     private int kernelSWEVertices;
 
+    private CreateReflectionTexture crt;
+
     void Start()
     {
         Initialize();
@@ -93,6 +96,12 @@ public class ShallowWater : MonoBehaviour
 
     void Initialize()
     {
+        crt = GetComponent<CreateReflectionTexture>();
+        if (crt == null)
+        {
+            gameObject.AddComponent<CreateReflectionTexture>();
+            crt = GetComponent<CreateReflectionTexture>();
+        }
         CreatePlaneMesh();
         randomXZ = new ComputeBuffer(width * depth, 8);
         setRandomDisplacementBuffer();
@@ -101,15 +110,25 @@ public class ShallowWater : MonoBehaviour
         initValuesSWE();
         initBuffersSWE();
     }
-    // Update is called once per frame
+
     void Update()
     {
-
+        //  if noisy factor changes -> initialize randomDisplacements again
+        if (!Mathf.Approximately(maxRandomDisplacement, lastMaxRandomDisplacement))
+        {
+            setRandomDisplacementBuffer();
+        }
     }
+
     public void OnWillRenderObject()
     {
         //  propagate waves by using linear wave equations
         updateHeightVelocitySWE();
+
+        if (waterMode == WaterMode.ReflAndObstcl || waterMode == WaterMode.Reflection)
+        {
+            crt.renderReflection(planeMesh, averageHeight);
+        }
     }
 
         void OnApplicationQuit()
@@ -210,6 +229,7 @@ public class ShallowWater : MonoBehaviour
             currentAvgHeight += U[i * depth + i].x;
         }
         currentAvgHeight /= (length * 2f);
+        averageHeight = currentAvgHeight;
 
         Mesh mesh = GetComponent<MeshFilter>().mesh;
         Vector3[] verts = mesh.vertices;

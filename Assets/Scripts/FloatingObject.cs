@@ -22,6 +22,8 @@ public class FloatingObject : MonoBehaviour
 
     void FixedUpdate()
     {
+        if (!heightField.gameObject.activeSelf)
+            return;
         //  if one offset point is below the water surface -> add a floating force in the next update
         bool floatingTemp = false;
         for (int i = 0; i < offsets.Length; i++)

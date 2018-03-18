@@ -158,14 +158,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   heightField: {fileID: 882867327}
   offsets:
-  - {fileID: 337785310}
   - {fileID: 1336155942}
+  - {fileID: 337785310}
   - {fileID: 676886582}
   - {fileID: 1549272225}
   - {fileID: 135281276}
   maxHeight: 1
   velocityDamping: 0.1
-  stabilizationHeight: 10
+  stabilizationHeight: 1
 --- !u!1 &135281275
 GameObject:
   m_ObjectHideFlags: 0
@@ -220,7 +220,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 105762910}
-  m_RootOrder: 0
+  m_RootOrder: 1
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1001 &648548827
 Prefab:
@@ -397,7 +397,7 @@ GameObject:
   - component: {fileID: 873260733}
   - component: {fileID: 873260737}
   m_Layer: 4
-  m_Name: Water (1)
+  m_Name: shallow water
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -480,9 +480,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 36584333489064f4aa09fc9a63099b5a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  waterMode: 0
-  heightFieldCS: {fileID: 7200000, guid: 4953ade53a221db458950ff31d7297c6, type: 3}
-  maxRandomDisplacement: 1
+  waterMode: 1
+  sweCS: {fileID: 7200000, guid: b614ae745fd3bfb468760406a892d191, type: 3}
+  maxRandomDisplacement: 0
   width: 64
   depth: 64
   quadSize: 128
@@ -539,24 +539,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 89115b0bda3cb7c4c868dc9170200cb7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  waterMode: 3
+  waterMode: 1
   heightFieldCS: {fileID: 7200000, guid: 4953ade53a221db458950ff31d7297c6, type: 3}
   mainCam: {fileID: 1846956667}
-  textureSize: 1024
-  clipPlaneOffset: 0.07
-  reflectLayers:
-    serializedVersion: 2
-    m_Bits: 4294967295
   maxRandomDisplacement: 0
   width: 64
   depth: 64
   quadSize: 128
   speed: 4
   gridSpacing: 2
-  maxHeight: 1024
+  maxHeight: 512
   maxVelocity: 256
-  randomInitialVelocity: 5
-  dampingVelocity: 0.9995
+  randomInitialVelocity: 10
+  dampingVelocity: 0.9999
 --- !u!4 &882867328
 Transform:
   m_ObjectHideFlags: 0
@@ -655,7 +650,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_Children: []
   m_Father: {fileID: 105762910}
-  m_RootOrder: 1
+  m_RootOrder: 0
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1506357434
 GameObject:
