@@ -101,14 +101,6 @@ public class HeightField : MonoBehaviour
     /// Damping factor to reduce artifacts
     /// </summary>       
     public float dampingVelocity;
-    /// <summary>
-    /// Chooses updatemode for the heightField
-    /// </summary>    
-    public bool useLinearEquation;
-    /// <summary>
-    /// Friction of the bed for SWE version
-    /// </summary>   
-    public float frictionSWE;
 
     //  private variables
     private ComputeBuffer randomXZ;
@@ -136,25 +128,7 @@ public class HeightField : MonoBehaviour
 
     private uint currentCollision;
 
-    //  SWE
-    private ComputeBuffer U_read;
-    private ComputeBuffer U_RW;
-    private ComputeBuffer F_RW;
-    private ComputeBuffer G_RW;
 
-    private Vector3[] U;
-    private Vector3[] G;
-    private Vector3[] F;
-    private float[] B;
-
-    private float dx;
-    private float dy;
-
-    private int kernelSWE;
-    private int kernelSWEFlux;
-    private int kernelSWEBC;
-    private int kernelSWEVertices;
-        
     private void Start()
     {
         Initialize();
@@ -171,9 +145,6 @@ public class HeightField : MonoBehaviour
         CreateMesh();
         initBuffers();
 
-        initValuesSWE();
-        initBuffersSWE();
-
         currentCollision = 1;
     }
 
@@ -183,10 +154,6 @@ public class HeightField : MonoBehaviour
         reflectWavesCB.Release();
         heightFieldCBOut.Release();
         verticesCB.Release();
-        U_read.Release();
-        F_RW.Release();
-        G_RW.Release();
-        U_RW.Release();
         randomXZ.Release();
     }
 
@@ -198,16 +165,13 @@ public class HeightField : MonoBehaviour
             setRandomDisplacementBuffer();
         }
     }
-    
+
     public void OnWillRenderObject()
     {
-        if (useLinearEquation)
-        {
-            updateHeightfield();
-            updateVertices();
-        }
-        else
-            updateHeightVelocitySWE();
+        //  propagate waves by using linear wave equations
+        updateHeightfield();
+        updateVertices();
+
         if (waterMode == WaterMode.ReflAndObstcl || waterMode == WaterMode.Reflection)
         {
             Mesh oldMesh = GetComponent<MeshFilter>().mesh;
@@ -277,72 +241,69 @@ public class HeightField : MonoBehaviour
 
     public void OnCollisionStay(Collision collision)
     {
-        if (useLinearEquation)
+        if (waterMode == WaterMode.ReflAndObstcl || waterMode == WaterMode.Obstacles)
         {
-            if (waterMode == WaterMode.ReflAndObstcl || waterMode == WaterMode.Obstacles)
+            //  temporary indices (collision points)
+            int2[] tempIndices = new int2[collision.contacts.Length];
+            for (int i = 0; i < collision.contacts.Length; i++)
             {
-                //  temporary indices (collision points)
-                int2[] tempIndices = new int2[collision.contacts.Length];
-                for (int i = 0; i < collision.contacts.Length; i++)
-                {
-                    Vector3 coll = collision.contacts[i].point - transform.position;
-                    int x = Math.Min(Math.Max(Mathf.RoundToInt(coll.x / quadSize), 0), width - 1);
-                    int z = Math.Min(Math.Max(Mathf.RoundToInt(coll.z / quadSize), 0), depth - 1);
-                    //if (hf[x * depth + z].height + maxHeight > coll.y)
-                    environment[x * depth + z] = currentCollision;
-                    tempIndices[i].x = x;
-                    tempIndices[i].y = z;
-                }
-                //  fill contact points to represent mesh (for reflecting waves)
-                for (int i = 0; i < tempIndices.Length; i++)
-                {
-                    int kTemp = tempIndices[i].x;
-                    for (int k = kTemp; k < width; k++)
-                    {
-                        if (environment[k * depth + tempIndices[i].y] == currentCollision)
-                        {
-                            kTemp = k;
-                        }
-                    }
-                    for (int n = tempIndices[i].x + 1; n < kTemp; n++)
-                        environment[n * depth + tempIndices[i].y] = currentCollision;
-
-                    kTemp = tempIndices[i].x;
-                    for (int k = kTemp; k >= 0; k--)
-                    {
-                        if (environment[k * depth + tempIndices[i].y] == currentCollision)
-                        {
-                            kTemp = k;
-                        }
-                    }
-                    for (int n = tempIndices[i].x - 1; n >= kTemp; n--)
-                        environment[n * depth + tempIndices[i].y] = currentCollision;
-
-                    kTemp = tempIndices[i].y;
-                    for (int k = kTemp; k < depth; k++)
-                    {
-                        if (environment[tempIndices[i].x * depth + k] == currentCollision)
-                        {
-                            kTemp = k;
-                        }
-                    }
-                    for (int n = tempIndices[i].y + 1; n < kTemp; n++)
-                        environment[tempIndices[i].x * depth + n] = currentCollision;
-
-                    kTemp = tempIndices[i].y;
-                    for (int k = kTemp; k >= 0; k--)
-                    {
-                        if (environment[tempIndices[i].x * depth + k] == currentCollision)
-                        {
-                            kTemp = k;
-                        }
-                    }
-                    for (int n = tempIndices[i].y - 1; n >= kTemp; n--)
-                        environment[tempIndices[i].x * depth + n] = currentCollision;
-                }
-                reflectWavesCB.SetData(environment);
-                currentCollision = (currentCollision + 1) % int.MaxValue;
+                Vector3 coll = collision.contacts[i].point - transform.position;
+                int x = Math.Min(Math.Max(Mathf.RoundToInt(coll.x / quadSize), 0), width - 1);
+                int z = Math.Min(Math.Max(Mathf.RoundToInt(coll.z / quadSize), 0), depth - 1);
+                //if (hf[x * depth + z].height + maxHeight > coll.y)
+                environment[x * depth + z] = currentCollision;
+                tempIndices[i].x = x;
+                tempIndices[i].y = z;
             }
+            //  fill contact points to represent mesh (for reflecting waves)
+            for (int i = 0; i < tempIndices.Length; i++)
+            {
+                int kTemp = tempIndices[i].x;
+                for (int k = kTemp; k < width; k++)
+                {
+                    if (environment[k * depth + tempIndices[i].y] == currentCollision)
+                    {
+                        kTemp = k;
+                    }
+                }
+                for (int n = tempIndices[i].x + 1; n < kTemp; n++)
+                    environment[n * depth + tempIndices[i].y] = currentCollision;
+
+                kTemp = tempIndices[i].x;
+                for (int k = kTemp; k >= 0; k--)
+                {
+                    if (environment[k * depth + tempIndices[i].y] == currentCollision)
+                    {
+                        kTemp = k;
+                    }
+                }
+                for (int n = tempIndices[i].x - 1; n >= kTemp; n--)
+                    environment[n * depth + tempIndices[i].y] = currentCollision;
+
+                kTemp = tempIndices[i].y;
+                for (int k = kTemp; k < depth; k++)
+                {
+                    if (environment[tempIndices[i].x * depth + k] == currentCollision)
+                    {
+                        kTemp = k;
+                    }
+                }
+                for (int n = tempIndices[i].y + 1; n < kTemp; n++)
+                    environment[tempIndices[i].x * depth + n] = currentCollision;
+
+                kTemp = tempIndices[i].y;
+                for (int k = kTemp; k >= 0; k--)
+                {
+                    if (environment[tempIndices[i].x * depth + k] == currentCollision)
+                    {
+                        kTemp = k;
+                    }
+                }
+                for (int n = tempIndices[i].y - 1; n >= kTemp; n--)
+                    environment[tempIndices[i].x * depth + n] = currentCollision;
+            }
+            reflectWavesCB.SetData(environment);
+            currentCollision = (currentCollision + 1) % int.MaxValue;
         }
     }
 
@@ -425,7 +386,7 @@ public class HeightField : MonoBehaviour
         }
         currentAvgHeight /= (length * 2f);
         clipPlaneOffset = currentAvgHeight;
-        
+
 
         heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
         heightFieldCS.SetBuffer(kernel, "reflectWaves", reflectWavesCB);
@@ -442,7 +403,7 @@ public class HeightField : MonoBehaviour
         heightFieldCS.Dispatch(kernel, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
         heightFieldCBOut.GetData(hf);
         heightFieldCB.SetData(hf);
-        if(waterMode == WaterMode.Obstacles || waterMode == WaterMode.ReflAndObstcl)
+        if (waterMode == WaterMode.Obstacles || waterMode == WaterMode.ReflAndObstcl)
             environment = new uint[width * depth];
     }
 
@@ -450,7 +411,7 @@ public class HeightField : MonoBehaviour
     {
         Mesh mesh = GetComponent<MeshFilter>().mesh;
         Vector3[] verts = mesh.vertices;
-        
+
         verticesCB.SetData(vertices);
         heightFieldCS.SetBuffer(kernelVertices, "heightFieldIn", heightFieldCB);
         heightFieldCS.SetBuffer(kernelVertices, "verticesPosition", verticesCB);
@@ -461,109 +422,6 @@ public class HeightField : MonoBehaviour
 
         mesh.vertices = verts;
         //mesh.RecalculateNormals();
-        GetComponent<MeshFilter>().mesh = mesh;
-    }
-
-    private void initValuesSWE()
-    {
-        U = new Vector3[width * depth];
-        F = new Vector3[(width + 1) * (depth)];
-        G = new Vector3[(width) * (depth + 1)];
-        B = new float[width * depth];
-
-        for (int i = 0; i < width; i++)
-        {
-            for (int j = 0; j < depth; j++)
-            {
-                float x = (i - width / 2.0f) * quadSize;
-                float y = (j - depth / 2.0f) * quadSize;
-                if (Mathf.Sqrt(x * x + y * y) < (quadSize * width / 4.0f))
-                    U[i * depth + j].x = maxHeight;
-                else
-                    U[i * depth + j].x = 10.0f;
-            }
-        }
-        for (int i = 0; i < B.Length; i++)
-        {
-            B[i] = 10;
-        }
-        dx = quadSize / width;
-        dy = quadSize / depth;
-        heightFieldCS.SetFloat("g_fDx", dx);
-        heightFieldCS.SetFloat("g_fDy", dy);
-    }
-
-    private void initBuffersSWE()
-    {
-        kernelSWE = heightFieldCS.FindKernel("updateHeightfieldUsingSWE");
-        kernelSWEBC = heightFieldCS.FindKernel("applyBC");
-        kernelSWEFlux = heightFieldCS.FindKernel("updateFlux");
-        kernelSWEVertices = heightFieldCS.FindKernel("interpolateVerticesSWE");
-        U_read = new ComputeBuffer(U.Length, 12);
-        U_RW = new ComputeBuffer(U.Length, 12);
-        F_RW = new ComputeBuffer(F.Length, 12);
-        G_RW = new ComputeBuffer(G.Length, 12);
-}
-
-    private void updateHeightVelocitySWE()
-    {
-        U_read.SetData(U);
-
-        heightFieldCS.SetBuffer(kernelSWEFlux, "F_new", F_RW);
-        heightFieldCS.SetBuffer(kernelSWEFlux, "G_new", G_RW);
-        heightFieldCS.SetBuffer(kernelSWEFlux, "U_new", U_read);
-
-        heightFieldCS.SetFloat("g_fGravity", Mathf.Abs(Physics.gravity.y));
-        heightFieldCS.SetFloat("g_fGridSpacing", quadSize);
-        heightFieldCS.SetFloat("g_fDeltaTime", Time.deltaTime);
-        heightFieldCS.SetFloat("g_fManning", frictionSWE);
-
-        //  calculate fluxes
-        heightFieldCS.Dispatch(kernelSWEFlux, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
-
-        heightFieldCS.SetBuffer(kernelSWE, "F", F_RW);
-        heightFieldCS.SetBuffer(kernelSWE, "U", U_read);
-        heightFieldCS.SetBuffer(kernelSWE, "G", G_RW);
-        heightFieldCS.SetBuffer(kernelSWE, "U_new", U_RW);
-
-        //  update height and velocites using flux
-        heightFieldCS.Dispatch(kernelSWE, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
-
-        heightFieldCS.SetBuffer(kernelSWEBC, "U_new", U_RW);
-
-        //  apply boundary conditions to the height field
-        heightFieldCS.Dispatch(kernelSWEBC, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
-
-        U_RW.GetData(U);
-        F_RW.GetData(F);
-        G_RW.GetData(G);
-
-        float currentAvgHeight = 0.0f;
-        int length = Math.Min(depth, width);
-        for (int i = 0; i < length; i++)
-        {
-            currentAvgHeight += U[i * depth + i].x;
-        }
-        for (int i = length - 1; i>= 0; i--)
-        {
-            currentAvgHeight += U[i * depth + i].x;
-        }
-        currentAvgHeight /= (length * 2f);
-        clipPlaneOffset = currentAvgHeight;
-
-        Mesh mesh = GetComponent<MeshFilter>().mesh;
-        Vector3[] verts = mesh.vertices;
-        
-        verticesCB.SetData(vertices);
-        heightFieldCS.SetBuffer(kernelSWEVertices, "U", U_RW);
-        heightFieldCS.SetBuffer(kernelSWEVertices, "verticesPosition", verticesCB);
-        heightFieldCS.SetBuffer(kernelSWEVertices, "randomDisplacement", randomXZ);
-
-        //  interpolate between height values for vertices
-        heightFieldCS.Dispatch(kernelSWEVertices, Mathf.CeilToInt(verts.Length / 256) + 1, 1, 1);
-        verticesCB.GetData(verts);
-
-        mesh.vertices = verts;
         GetComponent<MeshFilter>().mesh = mesh;
     }
 
@@ -616,7 +474,7 @@ public class HeightField : MonoBehaviour
         mesh.triangles = newTriangles;
         mesh.uv = newUV;
         vertices = newVertices;
-        
+
         GetComponent<MeshFilter>().mesh = mesh;
         GetComponent<BoxCollider>().size = new Vector3(quadSize * width, maxHeight / 2.0f, quadSize * depth);
         GetComponent<BoxCollider>().center = new Vector3(quadSize * width / 2.0f, maxHeight / 4.0f, quadSize * depth / 2.0f);
@@ -760,22 +618,11 @@ public class HeightField : MonoBehaviour
         m = Mathf.Max(Mathf.Min(Mathf.RoundToInt((worldPosition.z - transform.position.z) / quadSize), depth - 1), 0);
 
         float x1, x2, x3, x4;
-        if (useLinearEquation)
-        {
-            //	get surrounding height values at the vertex position (can be randomly displaced)
-            x1 = hf[k * depth + m].height;
-            x2 = hf[Mathf.Min((k + 1), width - 1) * depth + Mathf.Min(m + 1, depth - 1)].height;
-            x3 = hf[k * depth + Mathf.Min(m + 1, depth - 1)].height;
-            x4 = hf[Mathf.Min((k + 1), width - 1) * depth + m].height;
-        }
-        else
-        {
-            //	get surrounding height values at the vertex position (can be randomly displaced)
-            x1 = U[k * depth + m].x;
-            x2 = U[Mathf.Min((k + 1), width - 1) * depth + Mathf.Min(m + 1, depth - 1)].x;
-            x3 = U[k * depth + Mathf.Min(m + 1, depth - 1)].x;
-            x4 = U[Mathf.Min((k + 1), width - 1) * depth + m].x;
-        }
+        //	get surrounding height values at the vertex position (can be randomly displaced)
+        x1 = hf[k * depth + m].height;
+        x2 = hf[Mathf.Min((k + 1), width - 1) * depth + Mathf.Min(m + 1, depth - 1)].height;
+        x3 = hf[k * depth + Mathf.Min(m + 1, depth - 1)].height;
+        x4 = hf[Mathf.Min((k + 1), width - 1) * depth + m].height;
         //	get x and y value between 0 and 1 for interpolation
         float x = ((worldPosition.x - transform.position.x) / quadSize - k);
         float y = ((worldPosition.z - transform.position.z) / quadSize - m);

@@ -71,30 +71,32 @@ void updateHeightfield(uint3 id : SV_DispatchThreadID)
 		totalHeight += heightFieldIn[i * g_iDepth + min(g_iDepth - 1, min(j + 1, g_iDepth - 1))].height;
 	else
 		totalHeight += heightFieldIn[i * g_iDepth + j].height;
-	
+
 	//	different behaviour at obstacle or wall
 	if (reflectWaves[i * g_iDepth + j] != 0) {
-		totalHeight /= 2.0f;
+		heightFieldOut[i * g_iDepth + j].height = totalHeight / 4.0f;
+		heightFieldOut[i * g_iDepth + j].height -= g_fAvgHeight;
 	}
+	else {
+		//	wave equation in 2D, semi-implicit euler
+		//	max and min used for clamping the boundary and reflecting the waves
+		//	v[i, j]_(t+1) = v_t + dt * c * c * ((h[i - 1, j] + h[i + 1, j] + h[i, j + 1] + h[i, j - 1])- 4 * h[i, j]_t)	/ (g_fGridSpacing * g_fGridSpacing)
+		heightFieldOut[i * g_iDepth + j].velocity = heightFieldIn[i * g_iDepth + j].velocity + g_fDeltaTime * g_fSpeed * g_fSpeed *
+			(totalHeight - 4 * (heightFieldIn[i * g_iDepth + j].height)) / (g_fGridSpacing * g_fGridSpacing);
 
-	//	wave equation in 2D, semi-implicit euler
-	//	max and min used for clamping the boundary and reflecting the waves
-	//	v[i, j]_(t+1) = v_t + dt * c * c * ((h[i - 1, j] + h[i + 1, j] + h[i, j + 1] + h[i, j - 1])- 4 * h[i, j]_t)	/ (g_fGridSpacing * g_fGridSpacing)
-	heightFieldOut[i * g_iDepth + j].velocity = heightFieldIn[i * g_iDepth + j].velocity + g_fDeltaTime * g_fSpeed * g_fSpeed *
-		(totalHeight - 4 * (heightFieldIn[i * g_iDepth + j].height)) / (g_fGridSpacing * g_fGridSpacing);
+		//	clamping and damping of velocity
+		heightFieldOut[i * g_iDepth + j].velocity = clamp(heightFieldOut[i * g_iDepth + j].velocity, -g_fMaxVelocity, g_fMaxVelocity);
+		heightFieldOut[i * g_iDepth + j].velocity *= g_fDamping;
 
-	//	clamping and damping of velocity
-	heightFieldOut[i * g_iDepth + j].velocity = clamp(heightFieldOut[i * g_iDepth + j].velocity, -g_fMaxVelocity, g_fMaxVelocity);
-	heightFieldOut[i * g_iDepth + j].velocity *= g_fDamping;
+		//	integrate height at timestep t+1:  h[i,j]_t+1 = h[i,j]_t + v[i,j]_t * dt 
+		heightFieldOut[i * g_iDepth + j].height = heightFieldIn[i*g_iDepth + j].height + heightFieldOut[i * g_iDepth + j].velocity * g_fDeltaTime;
 
-	//	integrate height at timestep t+1:  h[i,j]_t+1 = h[i,j]_t + v[i,j]_t * dt 
-	heightFieldOut[i * g_iDepth + j].height = heightFieldIn[i*g_iDepth + j].height + heightFieldOut[i * g_iDepth + j].velocity * g_fDeltaTime;
+		//	keep average Height of all points at ca. 0
+		heightFieldOut[i * g_iDepth + j].height -= g_fAvgHeight;
 
-	//	keep average Height of all points at ca. 0
-	heightFieldOut[i * g_iDepth + j].height -= g_fAvgHeight;
-
-	//	clamp height
-	heightFieldOut[i * g_iDepth + j].height = clamp(heightFieldOut[i * g_iDepth + j].height, -g_fMaxHeight, g_fMaxHeight);
+		//	clamp height
+		heightFieldOut[i * g_iDepth + j].height = clamp(heightFieldOut[i * g_iDepth + j].height, -g_fMaxHeight, g_fMaxHeight);
+	}
 }
 
 RWStructuredBuffer<float3> verticesPosition : register(u1);
@@ -165,7 +167,7 @@ void updateHeightfieldUsingSWE(uint3 id : SV_DispatchThreadID)
 	float dt;
 	if (g_fDeltaTime * 0.01f > 0.0005f)
 		dt = 0.0005f;
-	else 
+	else
 		dt = g_fDeltaTime * 0.01f;
 	int index = i * g_iDepth + j;
 
