@@ -10,10 +10,4 @@ To come:
 ## Preview ##
 ![Alt Text](https://github.com/sc2insane/Lowpoly-water-for-Unity/raw/dev/Gifs/lowpolywater.gif)
 
-Currently Possible:  
-          * add random noise to vertices positions  
-          * change behaviour of water (damping, maxHeight, maxVelocity, initialRandomVelocity)  
-          * access heightfield to generate waves, etc.  
-          * adjust size of generated mesh  
-                
-Heightfield.cs accesses the sun position, forward vector and color for computing the specular highlights/reflections. Make sure to set the compute buffer and main camera in the script.
+          
