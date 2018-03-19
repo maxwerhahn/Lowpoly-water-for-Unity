@@ -1,0 +1,186 @@
+﻿#pragma kernel interpolateVerticesSWE
+#pragma kernel updateHeightfieldUsingSWE
+#pragma kernel updateFlux
+#pragma kernel applyBC
+
+float g_fDeltaTime;		//	timeStep
+float g_fGridSpacing;
+float g_fQuadSize;		//	size of the quads of the mesh
+uint g_iDepth;			//	depth of the heightfield
+uint g_iWidth;			//	width "-"
+float g_fGravity;
+float g_fManning;
+float g_fDx;
+float g_fDy;
+
+RWStructuredBuffer<float3> verticesPosition : register(u1);
+StructuredBuffer<float2> randomDisplacement : register(t1);
+
+//		x - -G[0,1] - - x - -G[1,1] - - x
+//		|				|				|
+//		|				|				|
+//	 F[0,0]	 U[0,0]	 F[1,0]	 U[1,0]	 F[2,0]		representation of variables, example: width = 2 x depth = 1, F and G are temporary
+//		|				|				|
+//		|				|				|
+//		x - -G[0,0] - - x - -G[1,0] - - x
+
+
+//	persistent values, stored over time:				x = height, 
+//														y = height * along x, 
+//														z = height * vel along z
+StructuredBuffer<float3> U : register(t0);				//	width x depth
+
+//	buffer to model the ground-height
+StructuredBuffer<float> B : register(t3);				//	width x depth 
+
+//	temporary flux-values
+StructuredBuffer<float3> G : register(t1);				//	width x depth + 1
+StructuredBuffer<float3> F : register(t2);				//	width + 1 x depth
+
+//	output buffers
+RWStructuredBuffer<float3> U_new : register(u0);		//	width x depth
+RWStructuredBuffer<float3> G_new : register(u1);		//	width x depth + 1
+RWStructuredBuffer<float3> F_new : register(u2);		//	width + 1 x depth
+
+
+/// not used yet
+//	calculates a bed slope vector used to model the ground
+float3 computeBedSlope(float h, int index) {
+	return float3(0.0f, -g_fGravity * h * B[index], -g_fGravity * h * B[index]);
+}
+
+//	calculates a bed friction vector used to model the ground
+float3 computeBedFriction(float u, float v) {
+	float constant = -g_fGravity * sqrt(u*u + v*v) * g_fManning * g_fManning;
+	return float3(0.0f, u * constant, v * constant);
+}
+/// not used yet
+
+[numthreads(16, 16, 1)]
+void updateHeightfieldUsingSWE(uint3 id : SV_DispatchThreadID)
+{
+	int i = id.x;
+	int j = id.y;
+
+	//	skip ghost cells on the edges which are used to apply boundary conditions
+	if (i >= g_iWidth - 1 || j >= g_iDepth - 1 || i <= 0 || j <= 0)
+		return;
+
+	float dt;
+	//	ensure stable simulation
+	if (g_fDeltaTime * 0.01f > 0.0005f)
+		dt = 0.0005f;
+	else
+		dt = g_fDeltaTime * 0.01f;
+
+	int index = i * g_iDepth + j;
+
+	int s = i * g_iDepth + j - 1;
+	int w = (i - 1) * g_iDepth + j;
+	int e = (i + 1) * g_iDepth + j;
+	int n = i * g_iDepth + j + 1;
+
+	//	integrate, using Lax Friedrichs scheme, 1st order stability
+	U_new[index] = 0.25f * (U[s] + U[w] + U[e] + U[n])
+		- 0.5f * dt / g_fDx * (F[e] - F[index]) - 0.5f * dt / g_fDy * (G[n] - G[index]);
+}
+
+//	compute fluxes for each border for each cell (in x- and z-direction) -> reason why the buffers F and G are larger in the corresponding dimension
+[numthreads(16, 16, 1)]
+void updateFlux(uint3 id : SV_DispatchThreadID) {
+	int i = id.x;
+	int j = id.y;
+
+	int index = i * g_iDepth + j;
+	if (i <= g_iWidth && j < g_iDepth) {
+
+		//	get average of corresponding cell-centers (these values are only stored)
+		float3 uH = (U_new[index] + U_new[min(g_iWidth - 1, i + 1) * g_iDepth + j]) * 0.5f;
+		float h = uH.x;
+		float u = uH.y / h;
+		float v = uH.z / h;
+		//	calculates Flux along the x-axis: h: height, u: velocity along x, v: velocity along z (of the waves)
+		F_new[index].x = h*u;
+		F_new[index].y = h*u*u + 0.5f*g_fGravity*h*h;
+		F_new[index].z = h*v*u;
+	}
+	if (i < g_iWidth && j <= g_iDepth) {
+		float3 uH = (U_new[index] + U_new[i * g_iDepth + min(g_iDepth - 1, j + 1)]) * 0.5f;
+		float h = uH.x;
+		float u = uH.y / h;
+		float v = uH.z / h;
+		//	same as above but along z-axis
+		G_new[index].x = h*v;
+		G_new[index].y = h*v*u;
+		G_new[index].z = h*v*v + 0.5f*g_fGravity*h*h;
+	}
+}
+
+//	applies boundary conditions to the edges of the simulation
+[numthreads(16, 16, 1)]
+void applyBC(uint3 id : SV_DispatchThreadID) {
+	int i = id.x;
+	int j = id.y;
+
+	if (i >= g_iWidth || j >= g_iDepth)
+		return;
+
+	int index = i * g_iDepth + j;
+
+	//	this version reflects waves on the boundaries, it is also possible to propagate waves from the one end to the other
+	if (i == 0) {
+		int e = (i + 1) * g_iDepth + j;
+		U_new[index] = U_new[e];
+		U_new[index].y = -U_new[index].y;
+	}
+	else if (i == g_iWidth - 1) {
+		int w = (i - 1) * g_iDepth + j;
+		U_new[index] = U_new[w];
+		U_new[index].y = -U_new[index].y;
+	}
+	else if (j == 0) {
+		int n = i * g_iDepth + j + 1;
+		U_new[index] = U_new[n];
+		U_new[index].z = -U_new[index].z;
+	}
+	else if (j == g_iDepth - 1) {
+		int s = i * g_iDepth + j - 1;
+		U_new[index] = U_new[s];
+		U_new[index].z = -U_new[index].z;
+	}
+}
+
+[numthreads(256, 1, 1)]
+void interpolateVerticesSWE(uint3 id : SV_DispatchThreadID) {
+	uint i = id.x;
+	if (i >= g_iWidth * g_iDepth)
+		return;
+
+	float3 pos = verticesPosition[i];
+	uint k, m = 0;
+
+	k = round(pos.x / g_fQuadSize);
+	m = round(pos.z / g_fQuadSize);
+	pos.x += randomDisplacement[k * g_iDepth + m].x;
+	pos.z += randomDisplacement[k * g_iDepth + m].y;
+	if (randomDisplacement[k * g_iDepth + m].x < 0)
+		k -= 1;
+	if (randomDisplacement[k * g_iDepth + m].y < 0)
+		m -= 1;
+
+	//	get surrounding height values at the vertex position (can be randomly displaced)
+	float x1 = U[k * g_iDepth + m].x;
+	float x2 = U[min((k + 1), g_iWidth - 1) * g_iDepth + min(m + 1, g_iDepth - 1)].x;
+	float x3 = U[k * g_iDepth + min(m + 1, g_iDepth - 1)].x;
+	float x4 = U[min((k + 1), g_iWidth - 1) * g_iDepth + m].x;
+
+	//	get x and y value between 0 and 1 for interpolation
+	float x = (pos.x / g_fQuadSize - k);
+	float y = (pos.z / g_fQuadSize - m);
+
+	//	bilinear interpolation to get height at vertex i
+	//	note if x == 0 and y == 0 vertex position is at heightfield position.
+	float resultingHeight = (x1 * (1 - x) + x4 * (x)) * (1 - y) + (x3 * (1 - x) + x2 * (x)) * (y);
+	pos.y = resultingHeight;
+	verticesPosition[i] = pos;
+}

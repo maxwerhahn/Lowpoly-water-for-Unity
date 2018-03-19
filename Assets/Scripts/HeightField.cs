@@ -3,9 +3,9 @@ using System.Collections;
 using System.Collections.Generic;
 using System;
 
+//[ExecuteInEditMode]
 public class HeightField : MonoBehaviour
 {
-    [ExecuteInEditMode]
     public struct heightField
     {
         public float height;
@@ -18,32 +18,79 @@ public class HeightField : MonoBehaviour
         public int y;
     }
 
+    public enum WaterMode
+    {
+        Minimal, Reflection, Obstacles, ReflAndObstcl
+    };
+
     //  public variables
+
+    /// <summary>
+    /// 0: simple water 
+    /// 1: reflections 
+    /// 2: obstacles reflect waves in realtime 
+    /// 3: reflections + obstacles 
+    /// </summary>       
+    public WaterMode waterMode;
+
+    /// <summary>
+    /// Compute Shader for heightField updates
+    /// </summary>
     public ComputeShader heightFieldCS;
+    /// <summary>
+    /// Main camera of the scene
+    /// </summary>
     public Camera mainCam;
+    
 
+    /// <summary>
+    /// The maximum random displacement of the vertices of the generated mesh
+    /// </summary>
     [Range(0.0f, 1.0f)]
-    public float maxRandomDisplacement;     ///  initial random displacement of vertices
+    public float maxRandomDisplacement;
 
+    /// <summary>
+    /// Width of the generated mesh
+    /// </summary>
     [Range(8, 254)]
-    public int width;                       ///  width of height field
+    public int width;
+    /// <summary>
+    /// Depth of the generated mesh
+    /// </summary>
     [Range(8, 254)]
-    public int depth;                       ///  depth of height field
-    public float quadSize;                  ///  size of one quad
+    public int depth;
+    /// <summary>
+    /// Distance between vertices of the generated mesh
+    /// </summary>
+    public float quadSize;
 
-    public float speed;                     ///  speed of waves
-    public float gridSpacing;               ///  grid spacing        
-    public float maxHeight;                 ///  maximum height in height field
-    public float maxVelocity;               ///  maximum velocity of vertices
-    public float randomInitialVelocity;     ///  apply random velocity to randomly chosen vertices
-    public float dampingVelocity;           ///  damping factor for velocities
-
-    public int textureSize = 256;
-    public float clipPlaneOffset = 0.07f;
-    public LayerMask reflectLayers = -1;
-    public bool updateEnvironment;
+    /// <summary>
+    /// Speed of waves
+    /// </summary>
+    public float speed;
+    /// <summary>
+    /// Also controls the speed of waves/updates
+    /// </summary>
+    public float gridSpacing;
+    /// <summary>
+    /// Maximum height values at the vertices
+    /// </summary>       
+    public float maxHeight;
+    /// <summary>
+    /// Maximum velocity values at the vertices
+    /// </summary>       
+    public float maxVelocity;
+    /// <summary>
+    /// Random inital velocity values at the vertices
+    /// </summary>       
+    public float randomInitialVelocity;
+    /// <summary>
+    /// Damping factor to reduce artifacts
+    /// </summary>       
+    public float dampingVelocity;
 
     //  private variables
+    private ComputeBuffer randomXZ;
     private ComputeBuffer heightFieldCB;
     private ComputeBuffer reflectWavesCB;
     private ComputeBuffer heightFieldCBOut;
@@ -51,7 +98,7 @@ public class HeightField : MonoBehaviour
 
     private Vector2[] randomDisplacement;
     private float lastMaxRandomDisplacement;
-
+    private float averageHeight;
 
     //  HEIGHTFIELD
     private heightField[] hf;
@@ -59,34 +106,31 @@ public class HeightField : MonoBehaviour
     private int kernel;                     ///   kernel for computeshader
     private int kernelVertices;
 
-    private Dictionary<Camera, Camera> m_ReflectionCameras = new Dictionary<Camera, Camera>(); // Camera -> Camera table
-    private RenderTexture reflectionTex;
-
-    private int m_OldReflectionTextureSize;
-    private Mesh newMesh;
+    private Mesh planeMesh;
+    private Vector3[] vertices;
 
     private uint currentCollision;
 
+    private CreateReflectionTexture crt;
 
-    //  SWE
-    private Vector3 [] U;
-    private Vector3 [] G;
-    private Vector3 [] F;
-    private float[] B;
-
-    public float frictionSWE;
-
-    private int kernelSWE;
-    private int kernelSWEFlux;
-
-    public float epsilon;
-    
-    void Start()
+    private void Start()
     {
+        Initialize();
+    }
+
+    void Initialize()
+    {
+        crt = GetComponent<CreateReflectionTexture>();
+        if (crt == null)
+        {
+            gameObject.AddComponent<CreateReflectionTexture>();
+            crt = GetComponent<CreateReflectionTexture>();
+        }
         mainCam.depthTextureMode = DepthTextureMode.Depth;
 
         CreatePlaneMesh();
         initHeightField();
+        randomXZ = new ComputeBuffer(width * depth, 8);
         setRandomDisplacementBuffer();
         CreateMesh();
         initBuffers();
@@ -100,14 +144,11 @@ public class HeightField : MonoBehaviour
         reflectWavesCB.Release();
         heightFieldCBOut.Release();
         verticesCB.Release();
+        randomXZ.Release();
     }
 
     void Update()
     {
-        //  update heightfield and vertices
-        updateHeightfield();
-        updateVertices();
-        
         //  if noisy factor changes -> initialize randomDisplacements again
         if (!Mathf.Approximately(maxRandomDisplacement, lastMaxRandomDisplacement))
         {
@@ -117,75 +158,20 @@ public class HeightField : MonoBehaviour
 
     public void OnWillRenderObject()
     {
-        Mesh oldMesh = GetComponent<MeshFilter>().mesh;
-        GetComponent<MeshFilter>().mesh = newMesh;
-        if (!enabled || !GetComponent<Renderer>() || !GetComponent<Renderer>().sharedMaterial ||
-            !GetComponent<Renderer>().enabled)
+        //  propagate waves by using linear wave equations
+        updateHeightfield();
+        updateVertices();
+
+        if (waterMode == WaterMode.ReflAndObstcl || waterMode == WaterMode.Reflection)
         {
-            return;
+            crt.renderReflection(planeMesh, averageHeight);
         }
-
-        Camera cam = Camera.current;
-        if (!cam)
-        {
-            return;
-        }
-
-        Camera reflectionCamera;
-        CreateWaterObjects(cam, out reflectionCamera);
-
-        // find out the reflection plane: position and normal in world space
-        Vector3 pos = transform.position;
-        Vector3 normal = transform.up;
-
-        UpdateCameraModes(cam, reflectionCamera);
-
-        // Reflect camera around reflection plane
-        float d = -Vector3.Dot(normal, pos) - clipPlaneOffset;
-        Vector4 reflectionPlane = new Vector4(normal.x, normal.y, normal.z, d);
-
-        Matrix4x4 reflection = Matrix4x4.zero;
-        CalculateReflectionMatrix(ref reflection, reflectionPlane);
-        Vector3 oldpos = cam.transform.position;
-        Vector3 newpos = reflection.MultiplyPoint(oldpos);
-        reflectionCamera.worldToCameraMatrix = cam.worldToCameraMatrix * reflection;
-
-        // Setup oblique projection matrix so that near plane is our reflection
-        // plane. This way we clip everything below/above it for free.
-        Vector4 clipPlane = CameraSpacePlane(reflectionCamera, pos, normal, 1.0f);
-        reflectionCamera.projectionMatrix = cam.CalculateObliqueMatrix(clipPlane);
-
-        // Set custom culling matrix from the current camera
-        reflectionCamera.cullingMatrix = cam.projectionMatrix * cam.worldToCameraMatrix;
-
-        reflectionCamera.cullingMask = ~(1 << 4) & reflectLayers.value; // never render water layer
-        reflectionCamera.targetTexture = reflectionTex;
-        bool oldCulling = GL.invertCulling;
-        GL.invertCulling = !oldCulling;
-        reflectionCamera.transform.position = newpos;
-        Vector3 euler = cam.transform.eulerAngles;
-        reflectionCamera.transform.eulerAngles = new Vector3(-euler.x, euler.y, euler.z);
-        reflectionCamera.Render();
-        reflectionCamera.transform.position = oldpos;
-        GL.invertCulling = oldCulling;
-        GetComponent<Renderer>().sharedMaterial.SetTexture("_ReflectionTex", reflectionTex);
-        GetComponent<MeshFilter>().mesh = oldMesh;
     }
-
-    void OnDisable()
-    {
-        foreach (var kvp in m_ReflectionCameras)
-        {
-            DestroyImmediate((kvp.Value).gameObject);
-        }
-        m_ReflectionCameras.Clear();
-    }
-
+    
     public void OnCollisionStay(Collision collision)
     {
-        if (updateEnvironment)
+        if (waterMode == WaterMode.ReflAndObstcl || waterMode == WaterMode.Obstacles)
         {
-            //environment = new uint[width * depth];
             //  temporary indices (collision points)
             int2[] tempIndices = new int2[collision.contacts.Length];
             for (int i = 0; i < collision.contacts.Length; i++)
@@ -201,7 +187,7 @@ public class HeightField : MonoBehaviour
             //  fill contact points to represent mesh (for reflecting waves)
             for (int i = 0; i < tempIndices.Length; i++)
             {
-                int kTemp = tempIndices[i].x + 1;
+                int kTemp = tempIndices[i].x;
                 for (int k = kTemp; k < width; k++)
                 {
                     if (environment[k * depth + tempIndices[i].y] == currentCollision)
@@ -210,11 +196,9 @@ public class HeightField : MonoBehaviour
                     }
                 }
                 for (int n = tempIndices[i].x + 1; n < kTemp; n++)
-                {
                     environment[n * depth + tempIndices[i].y] = currentCollision;
-                }
 
-                kTemp = tempIndices[i].x - 1;
+                kTemp = tempIndices[i].x;
                 for (int k = kTemp; k >= 0; k--)
                 {
                     if (environment[k * depth + tempIndices[i].y] == currentCollision)
@@ -225,7 +209,7 @@ public class HeightField : MonoBehaviour
                 for (int n = tempIndices[i].x - 1; n >= kTemp; n--)
                     environment[n * depth + tempIndices[i].y] = currentCollision;
 
-                kTemp = tempIndices[i].y + 1;
+                kTemp = tempIndices[i].y;
                 for (int k = kTemp; k < depth; k++)
                 {
                     if (environment[tempIndices[i].x * depth + k] == currentCollision)
@@ -236,7 +220,7 @@ public class HeightField : MonoBehaviour
                 for (int n = tempIndices[i].y + 1; n < kTemp; n++)
                     environment[tempIndices[i].x * depth + n] = currentCollision;
 
-                kTemp = tempIndices[i].y - 1;
+                kTemp = tempIndices[i].y;
                 for (int k = kTemp; k >= 0; k--)
                 {
                     if (environment[tempIndices[i].x * depth + k] == currentCollision)
@@ -252,7 +236,7 @@ public class HeightField : MonoBehaviour
         }
     }
 
-    void setRandomDisplacementBuffer()
+    private void setRandomDisplacementBuffer()
     {
         randomDisplacement = new Vector2[width * depth];
         for (int i = 0; i < width; i++)
@@ -265,9 +249,10 @@ public class HeightField : MonoBehaviour
             }
         }
         lastMaxRandomDisplacement = maxRandomDisplacement;
+        randomXZ.SetData(randomDisplacement);
     }
 
-    void initHeightField()
+    private void initHeightField()
     {
         hf = new heightField[width * depth];
 
@@ -287,7 +272,7 @@ public class HeightField : MonoBehaviour
         }
     }
 
-    void initBuffers()
+    private void initBuffers()
     {
         //  initialize buffers
         heightFieldCB = new ComputeBuffer(width * depth, 8);
@@ -313,18 +298,24 @@ public class HeightField : MonoBehaviour
         Shader.SetGlobalInt("g_iWidth", width);
     }
 
+
     //  dispatch of compute shader
-    void updateHeightfield()
+    private void updateHeightfield()
     {
-        //  calculate average of all points in the heightfield (might be unecessary)
+        //  calculate approximate average of all points in the heightfield (might be unecessary)
         float currentAvgHeight = 0.0f;
-        int length = Math.Min(hf.Length, 1024);
+        int length = Math.Min(depth, width);
         for (int i = 0; i < length; i++)
         {
-            currentAvgHeight += hf[i].height;
+            currentAvgHeight += hf[i * depth + i].height;
         }
-        currentAvgHeight /= length;
-        clipPlaneOffset = currentAvgHeight;
+        for (int i = length - 1; i >= 0; i--)
+        {
+            currentAvgHeight += hf[i * depth + i].height;
+        }
+        currentAvgHeight /= (length * 2f);
+        averageHeight = currentAvgHeight;
+
 
         heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
         heightFieldCS.SetBuffer(kernel, "reflectWaves", reflectWavesCB);
@@ -336,39 +327,35 @@ public class HeightField : MonoBehaviour
         heightFieldCS.SetFloat("g_fMaxHeight", maxHeight);
         heightFieldCS.SetFloat("g_fDamping", dampingVelocity);
         heightFieldCS.SetFloat("g_fAvgHeight", currentAvgHeight);
-        heightFieldCS.SetFloat("g_fGridSpacing", gridSpacing);
+        heightFieldCS.SetFloat("g_fGridSpacing", Mathf.Max(gridSpacing, 1f));
 
         heightFieldCS.Dispatch(kernel, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
         heightFieldCBOut.GetData(hf);
         heightFieldCB.SetData(hf);
-        Shader.SetGlobalBuffer("g_HeightField", heightFieldCBOut);
-        environment = new uint[width * depth];
+        if (waterMode == WaterMode.Obstacles || waterMode == WaterMode.ReflAndObstcl)
+            environment = new uint[width * depth];
     }
 
-    void updateVertices()
+    private void updateVertices()
     {
         Mesh mesh = GetComponent<MeshFilter>().mesh;
         Vector3[] verts = mesh.vertices;
 
-
-        ComputeBuffer randomXZ = new ComputeBuffer(width * depth, 8);
-        randomXZ.SetData(randomDisplacement);
-        verticesCB.SetData(verts);
+        verticesCB.SetData(vertices);
         heightFieldCS.SetBuffer(kernelVertices, "heightFieldIn", heightFieldCB);
         heightFieldCS.SetBuffer(kernelVertices, "verticesPosition", verticesCB);
         heightFieldCS.SetBuffer(kernelVertices, "randomDisplacement", randomXZ);
 
-        heightFieldCS.Dispatch(kernelVertices, Mathf.CeilToInt(verts.Length / 256), 1, 1);
+        heightFieldCS.Dispatch(kernelVertices, Mathf.CeilToInt(verts.Length / 256) + 1, 1, 1);
         verticesCB.GetData(verts);
 
         mesh.vertices = verts;
         //mesh.RecalculateNormals();
         GetComponent<MeshFilter>().mesh = mesh;
-        randomXZ.Release();
     }
 
-    //  creates mesh without flat shading
-    void CreateMesh()
+    //  creates mesh with flat shading
+    private void CreateMesh()
     {
         Vector2[] newUV;
         Vector3[] newVertices;
@@ -382,10 +369,6 @@ public class HeightField : MonoBehaviour
         {
             for (int j = 0; j < depth; j++)
             {
-                if (i != 0 && j != 0 && i != width - 1 && j != depth - 1)
-                    newVertices[i * depth + j] = new Vector3(i * quadSize + randomDisplacement[i * depth + j].x, 0.0f, j * quadSize + randomDisplacement[i * depth + j].y);
-                else
-                    newVertices[i * depth + j] = new Vector3(i * quadSize, hf[i * depth + j].height, j * quadSize);
                 newVertices[i * depth + j] = new Vector3(i * quadSize, 0.0f, j * quadSize);
             }
         }
@@ -419,16 +402,16 @@ public class HeightField : MonoBehaviour
         mesh.vertices = newVertices;
         mesh.triangles = newTriangles;
         mesh.uv = newUV;
+        vertices = newVertices;
 
-        mesh.RecalculateNormals();
         GetComponent<MeshFilter>().mesh = mesh;
         GetComponent<BoxCollider>().size = new Vector3(quadSize * width, maxHeight / 2.0f, quadSize * depth);
         GetComponent<BoxCollider>().center = new Vector3(quadSize * width / 2.0f, maxHeight / 4.0f, quadSize * depth / 2.0f);
     }
 
-    void CreatePlaneMesh()
+    private void CreatePlaneMesh()
     {
-        newMesh = GetComponent<MeshFilter>().mesh;
+        planeMesh = GetComponent<MeshFilter>().mesh;
         //  create plane mesh for reflection
         Vector3[] planeVertices = new Vector3[4];
         Vector3[] planeNormals = new Vector3[4];
@@ -447,125 +430,27 @@ public class HeightField : MonoBehaviour
         planeTriangles[3] = 0;
         planeTriangles[4] = 1;
         planeTriangles[5] = 3;
-        newMesh.vertices = planeVertices;
-        newMesh.triangles = planeTriangles;
-        newMesh.normals = planeNormals;
+        planeMesh.vertices = planeVertices;
+        planeMesh.triangles = planeTriangles;
+        planeMesh.normals = planeNormals;
     }
-
-    void UpdateCameraModes(Camera src, Camera dest)
-    {
-        if (dest == null)
-        {
-            return;
-        }
-        // set water camera to clear the same way as current camera
-        dest.clearFlags = src.clearFlags;
-        dest.backgroundColor = src.backgroundColor;
-        if (src.clearFlags == CameraClearFlags.Skybox)
-        {
-            Skybox sky = src.GetComponent<Skybox>();
-            Skybox mysky = dest.GetComponent<Skybox>();
-            if (!sky || !sky.material)
-            {
-                mysky.enabled = false;
-            }
-            else
-            {
-                mysky.enabled = true;
-                mysky.material = sky.material;
-            }
-        }
-        // update other values to match current camera.
-        // even if we are supplying custom camera&projection matrices,
-        // some of values are used elsewhere (e.g. skybox uses far plane)
-        dest.farClipPlane = src.farClipPlane;
-        dest.nearClipPlane = src.nearClipPlane;
-        dest.orthographic = src.orthographic;
-        dest.fieldOfView = src.fieldOfView;
-        dest.aspect = src.aspect;
-        dest.orthographicSize = src.orthographicSize;
-    }
-
-    // On-demand create any objects we need for water
-    void CreateWaterObjects(Camera currentCamera, out Camera reflectionCamera)
-    {
-        reflectionCamera = null;
-
-        // Reflection render texture
-        if (!reflectionTex || m_OldReflectionTextureSize != textureSize)
-        {
-            if (reflectionTex)
-            {
-                DestroyImmediate(reflectionTex);
-            }
-            reflectionTex = new RenderTexture(textureSize, textureSize, 16);
-            reflectionTex.name = "__WaterReflection" + GetInstanceID();
-            reflectionTex.isPowerOfTwo = true;
-            reflectionTex.hideFlags = HideFlags.DontSave;
-            m_OldReflectionTextureSize = textureSize;
-        }
-
-        // Camera for reflection
-        m_ReflectionCameras.TryGetValue(currentCamera, out reflectionCamera);
-        if (!reflectionCamera) // catch both not-in-dictionary and in-dictionary-but-deleted-GO
-        {
-            GameObject go = new GameObject("Water Refl Camera id" + GetInstanceID() + " for " + currentCamera.GetInstanceID(), typeof(Camera), typeof(Skybox));
-            reflectionCamera = go.GetComponent<Camera>();
-            reflectionCamera.enabled = false;
-            reflectionCamera.transform.position = transform.position;
-            reflectionCamera.transform.rotation = transform.rotation;
-            reflectionCamera.gameObject.AddComponent<FlareLayer>();
-            go.hideFlags = HideFlags.HideAndDontSave;
-            m_ReflectionCameras[currentCamera] = reflectionCamera;
-        }
-    }
-
-    static void CalculateReflectionMatrix(ref Matrix4x4 reflectionMat, Vector4 plane)
-    {
-        reflectionMat.m00 = (1F - 2F * plane[0] * plane[0]);
-        reflectionMat.m01 = (-2F * plane[0] * plane[1]);
-        reflectionMat.m02 = (-2F * plane[0] * plane[2]);
-        reflectionMat.m03 = (-2F * plane[3] * plane[0]);
-
-        reflectionMat.m10 = (-2F * plane[1] * plane[0]);
-        reflectionMat.m11 = (1F - 2F * plane[1] * plane[1]);
-        reflectionMat.m12 = (-2F * plane[1] * plane[2]);
-        reflectionMat.m13 = (-2F * plane[3] * plane[1]);
-
-        reflectionMat.m20 = (-2F * plane[2] * plane[0]);
-        reflectionMat.m21 = (-2F * plane[2] * plane[1]);
-        reflectionMat.m22 = (1F - 2F * plane[2] * plane[2]);
-        reflectionMat.m23 = (-2F * plane[3] * plane[2]);
-
-        reflectionMat.m30 = 0F;
-        reflectionMat.m31 = 0F;
-        reflectionMat.m32 = 0F;
-        reflectionMat.m33 = 1F;
-    }
-
-    // Given position/normal of the plane, calculates plane in camera space.
-    Vector4 CameraSpacePlane(Camera cam, Vector3 pos, Vector3 normal, float sideSign)
-    {
-        Vector3 offsetPos = pos + normal * clipPlaneOffset;
-        Matrix4x4 m = cam.worldToCameraMatrix;
-        Vector3 cpos = m.MultiplyPoint(offsetPos);
-        Vector3 cnormal = m.MultiplyVector(normal).normalized * sideSign;
-        return new Vector4(cnormal.x, cnormal.y, cnormal.z, -Vector3.Dot(cpos, cnormal));
-    }
-
-    //  interpolated height at world position
+    
+    /// <summary>
+    /// Calculates the Y-value of the water-heightfield at the given X- and Z-values of a position in world space.
+    /// </summary>
+    /// <param name="worldPosition">X- and Z- Value will be taken from this Vector3</param>
     public float getHeightAtWorldPosition(Vector3 worldPosition)
     {
         int k, m;
         k = Mathf.Max(Mathf.Min(Mathf.RoundToInt((worldPosition.x - transform.position.x) / quadSize), width - 1), 0);
         m = Mathf.Max(Mathf.Min(Mathf.RoundToInt((worldPosition.z - transform.position.z) / quadSize), depth - 1), 0);
-        
-        //	get surrounding height values at the vertex position (can be randomly displaced)
-        float x1 = hf[k * depth + m].height;
-        float x2 = hf[Mathf.Min((k + 1), width - 1) * depth + Mathf.Min(m + 1, depth - 1)].height;
-        float x3 = hf[k * depth + Mathf.Min(m + 1, depth - 1)].height;
-        float x4 = hf[Mathf.Min((k + 1), width - 1) * depth + m].height;
 
+        float x1, x2, x3, x4;
+        //	get surrounding height values at the vertex position (can be randomly displaced)
+        x1 = hf[k * depth + m].height;
+        x2 = hf[Mathf.Min((k + 1), width - 1) * depth + Mathf.Min(m + 1, depth - 1)].height;
+        x3 = hf[k * depth + Mathf.Min(m + 1, depth - 1)].height;
+        x4 = hf[Mathf.Min((k + 1), width - 1) * depth + m].height;
         //	get x and y value between 0 and 1 for interpolation
         float x = ((worldPosition.x - transform.position.x) / quadSize - k);
         float y = ((worldPosition.z - transform.position.z) / quadSize - m);
