@@ -8,6 +8,6 @@ To come:
 - [x] interactive water (additional script required)
           
 ## Preview ##
-![Alt Text](https://github.com/sc2insane/Lowpoly-water-for-Unity/raw/dev/Gifs/lowpolywater.gif)
+![Alt Text](https://github.com/sc2insane/Lowpoly-water-for-Unity/raw/master/Gifs/lowpolywater.gif)
 
           
