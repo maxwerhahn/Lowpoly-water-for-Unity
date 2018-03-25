@@ -57,7 +57,7 @@ Shader "Custom/HeightFieldRender" {
 		{
 			float3 normal : NORMAL;
 			float4 vertex : SV_POSITION;
-			float4 lightingColor : COLOR0;
+			half4 lightingColor : COLOR0;
 			float4 projPos : TEXCOORD0;
 			float4 refl : TEXCOORD1;
 			//SHADOW_COORDS(3)
@@ -113,27 +113,48 @@ Shader "Custom/HeightFieldRender" {
 				#pragma geometry geom
 				#pragma fragment frag
 
-				//	specular lighting model
-				float4 lighting(float3 centerPos, float3 normal) {
-				float4x4 modelMatrix = unity_ObjectToWorld;
-				float4x4 modelMatrixInverse = unity_WorldToObject;
-				float3 pos = mul(modelMatrix, float4(centerPos, 1.0f)).xyz;
+				half3 BlinnPhong(half3 lightDir, half3 normal, half3 viewDir) {
 
-				float3 normalDirection = normalize(mul(float4(normal, 1.0f), modelMatrixInverse).xyz);
-				float3 viewDirection = normalize(_WorldSpaceCameraPos - pos);
-				float3 lightDirection;
-				float attenuation = g_Attenuation;
+					half3 lightOut;
+					half distance = length(lightDir);
+					lightDir = lightDir / distance;
+					distance = distance * distance; 
+
+					half NdotL = dot(normal, lightDir);
+					half intensity = saturate(NdotL);
+
+					half3 diffuse = intensity * _LightColor0.rgb * g_Color.rgb / distance;
+
+					half3 H = normalize(lightDir + viewDir);
+
+					half NdotH = dot(normal, H);
+					intensity = pow(saturate(NdotH), g_Shininess);
+
+					lightOut = diffuse + intensity * _LightColor0  * g_SpecColor.rgb / distance;
+					return lightOut;
+				}
+
+				//	specular lighting model
+				half4 lighting(half3 centerPos, half3 normal) {
+				half4x4 modelMatrix = unity_ObjectToWorld;
+				half4x4 modelMatrixInverse = unity_WorldToObject;
+				half3 pos = mul(modelMatrix, half4(centerPos, 1.0f)).xyz;
+
+				half3 normalDirection = normalize(mul(half4(normal, 1.0f), modelMatrixInverse).xyz);
+				half3 viewDirection = normalize(_WorldSpaceCameraPos - pos);
+				half3 lightDirection;
+				half attenuation = g_Attenuation;
 
 				if (_WorldSpaceLightPos0.w == 0.0f)
 					lightDirection = normalize(_WorldSpaceLightPos0.xyz);
 				else {
-					float3 direction = _WorldSpaceLightPos0.xyz - pos;
+					half3 direction = _WorldSpaceLightPos0.xyz - pos;
 					lightDirection = normalize(direction);
 					attenuation /= length(direction);
 				}
 
-				float3 diffuseReflection;
-				float3 specularReflection;
+				half3 diffuseReflection;
+				half3 specularReflection;
 
 				if (dot(normalDirection, lightDirection) > 0.0f) {
 					specularReflection = attenuation * g_SpecColor.rgb * _LightColor0.rgb * pow(max(0.0, dot(reflect(-lightDirection, normalDirection), viewDirection)), g_Shininess);
@@ -142,18 +163,18 @@ Shader "Custom/HeightFieldRender" {
 				//	directional light under water
 				else {
 					diffuseReflection = 0.5f * attenuation * _LightColor0.rgb * g_Color.rgb * max(0.0, dot(-normalDirection, lightDirection));
-					specularReflection = float3(0.0f, 0.0f, 0.0f);
+					specularReflection = half3(0.0f, 0.0f, 0.0f);
 				}
-
+				//return half4(BlinnPhong(lightDirection, normalDirection, viewDirection) + UNITY_LIGHTMODEL_AMBIENT * g_Color.rgb, g_Color.w);
 				//	add vertex lighting (4 non-important vertex lights)
 				for (int i = 0; i < 4; i++)
 				{
-					float4 lightPosition = float4(unity_4LightPosX0[i],	unity_4LightPosY0[i], unity_4LightPosZ0[i], 1.0f);
+					half4 lightPosition = half4(unity_4LightPosX0[i],	unity_4LightPosY0[i], unity_4LightPosZ0[i], 1.0f);
 
-					float3 dist = lightPosition.xyz - pos;
-					float3 dir = normalize(dist);
-					float squaredDistance =	dot(dist, dist);
-					float att = g_Attenuation / (1.0f + unity_4LightAtten0[i] * squaredDistance);
+					half3 dist = lightPosition.xyz - pos;
+					half3 dir = normalize(dist);
+					half squaredDistance =	dot(dist, dist);
+					half att = g_Attenuation / (1.0f + unity_4LightAtten0[i] * squaredDistance);
 					
 					if (dot(normalDirection, dir) < 0.0f) {
 						diffuseReflection = (diffuseReflection + 0.5f * att * unity_LightColor[i].rgb * g_Color.rgb * max(0.0, dot(-normalDirection, dir)));
@@ -163,7 +184,7 @@ Shader "Custom/HeightFieldRender" {
 						specularReflection = (specularReflection + att * g_SpecColor.rgb * unity_LightColor[i].rgb * pow(max(0.0, dot(reflect(-dir, normalDirection), viewDirection)), g_Shininess));
 					}
 				}
-				return float4(specularReflection + diffuseReflection + UNITY_LIGHTMODEL_AMBIENT * g_Color, g_Color.w);
+				return half4(specularReflection + diffuseReflection + UNITY_LIGHTMODEL_AMBIENT * g_Color.rgb, g_Color.w);
 			}
 			
 			[maxvertexcount(3)]
@@ -180,7 +201,7 @@ Shader "Custom/HeightFieldRender" {
 
 				float3 n = normalize(cross(pos1 - pos, pos2 - pos));
 				float3 avgPos = (pos + pos1 + pos2) / 3.0f;
-				float4 color = lighting(avgPos, n);
+				half4 color = lighting(avgPos, n);
 
 				o.vertex = UnityObjectToClipPos(pos);
 				o.lightingColor = color;
