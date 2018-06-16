@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 1812374950}
-  m_IndirectSpecularColor: {r: 0.44949877, g: 0.49649507, b: 0.55914825, a: 1}
+  m_IndirectSpecularColor: {r: 0.4494983, g: 0.4964946, b: 0.55914783, a: 1}
 --- !u!157 &3
 LightmapSettings:
   m_ObjectHideFlags: 0
@@ -539,19 +539,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 89115b0bda3cb7c4c868dc9170200cb7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  waterMode: 1
+  waterMode: 3
   heightFieldCS: {fileID: 7200000, guid: 4953ade53a221db458950ff31d7297c6, type: 3}
   mainCam: {fileID: 1846956667}
   maxRandomDisplacement: 0
   width: 64
   depth: 64
   quadSize: 128
-  speed: 4
+  speed: 8
   gridSpacing: 2
-  maxHeight: 512
+  maxHeight: 1024
   maxVelocity: 256
   randomInitialVelocity: 10
-  dampingVelocity: 0.9999
+  dampingVelocity: 0.999
 --- !u!4 &882867328
 Transform:
   m_ObjectHideFlags: 0
