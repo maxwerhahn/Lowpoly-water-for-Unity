@@ -548,16 +548,16 @@ MonoBehaviour:
   waterMode: 3
   heightFieldCS: {fileID: 7200000, guid: 4953ade53a221db458950ff31d7297c6, type: 3}
   mainCam: {fileID: 1846956667}
-  maxRandomDisplacement: 0
-  width: 64
-  depth: 64
-  quadSize: 128
+  maxRandomDisplacement: 1
+  width: 254
+  depth: 254
+  quadSize: 32
   speed: 4
   gridSpacing: 2
   maxHeight: 1024
   maxVelocity: 256
-  randomInitialVelocity: 10
-  dampingVelocity: 0.9999
+  randomInitialVelocity: 5
+  dampingVelocity: 0.999
 --- !u!4 &882867328
 Transform:
   m_ObjectHideFlags: 0
