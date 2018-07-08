@@ -67,6 +67,7 @@ void updateHeightfield(uint3 id : SV_DispatchThreadID)
 		coef_Straigth--;
 
 	float totalHeightDiag = 0.0f;
+
 	if (reflectWaves[max(i - 1, 0) * g_iDepth + max(j - 1, 0)] == 0)
 		totalHeightDiag += heightFieldIn[max(i - 1, 0) * g_iDepth + max(j - 1, 0)].height;
 	else

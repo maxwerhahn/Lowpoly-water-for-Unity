@@ -1,0 +1,650 @@
+﻿#pragma kernel BuildGridCS
+#pragma kernel ClearGridIndicesCS
+#pragma kernel BuildGridIndicesCS
+#pragma kernel RearrangeParticlesCS
+#pragma kernel DensityCS_Grid
+#pragma kernel ForceCS_Grid
+#pragma kernel IntegrateCS
+#pragma kernel CollideCS
+
+struct Particle
+{
+	float3 position;
+	float3 velocity;
+	float3 lastVelocity;
+};
+
+struct ParticleForces
+{
+	float3 acceleration;
+};
+
+struct ParticleDensity
+{
+	float density;
+};
+
+struct RigidBody {
+	uint type;
+	bool isStatic;
+	float mass;
+	float4x4 rotMat;
+	float4x4 invRotMat;
+	float4x4 inertia;
+	float3 position;
+	float3 size;
+	float3 linVel;
+	float3 angMom;
+};
+
+struct CollisionInfo {
+	float3 CP;
+	float3 normal;
+	float depth;
+	bool isValid;
+};
+
+cbuffer cbSimulationConstants : register(b0)
+{
+	uint g_iNumParticles;
+	uint g_iNumRigidBodies;
+	float g_fTimeStep;
+	float g_fSmoothlen;
+	float g_fPressureStiffness;
+	float g_fRestDensity;
+	float g_fDensityCoef;
+	float g_fGradPressureCoef;
+	float g_fLapViscosityCoef;
+	float g_fMass;
+	float g_fBuoyancy;
+
+	float4 g_vGravity;
+	float4 g_vGridDim;
+	float4 g_vContainerSize;
+	float g_fRestitution;
+};
+
+//--------------------------------------------------------------------------------------
+// Fluid Simulation
+//--------------------------------------------------------------------------------------
+
+#define SIMULATION_BLOCK_SIZE 512
+
+//--------------------------------------------------------------------------------------
+// Structured Buffers
+//--------------------------------------------------------------------------------------
+RWStructuredBuffer<Particle> ParticlesRW : register(u0);
+StructuredBuffer<Particle> ParticlesRO : register(t0);
+
+RWStructuredBuffer<ParticleDensity> ParticlesDensityRW : register(u0);
+StructuredBuffer<ParticleDensity> ParticlesDensityRO : register(t1);
+
+RWStructuredBuffer<ParticleForces> ParticlesForcesRW : register(u0);
+StructuredBuffer<ParticleForces> ParticlesForcesRO : register(t2);
+
+RWStructuredBuffer<uint2> GridRW : register(u0);
+StructuredBuffer<uint2> GridRO : register(t3);
+
+RWStructuredBuffer<uint2> GridIndicesRW : register(u0);
+StructuredBuffer<uint2> GridIndicesRO : register(t4);
+
+RWStructuredBuffer<RigidBody> RigidBodiesRW : register(u1);
+StructuredBuffer<RigidBody> RigidBodiesRO : register(t5);
+
+
+float3 GridCalculateCell(float3 position)
+{
+	return clamp((position + g_vContainerSize.xyz) * g_vGridDim.xyz, float3(0, 0, 0), float3(255, 255, 255));
+}
+
+unsigned int GridConstuctKey(uint3 xyz)
+{
+	// Bit pack [-----UNUSED-----][----Z---][----Y---][----X---]
+	//                8-bit         8-bit      8-bit	 8-bit
+	return dot(xyz.zyx, uint3(256 * 256, 256, 1));
+}
+
+uint2 GridConstuctKeyValuePair(uint3 xyz, uint value)
+{
+	// Bit pack[--UNUSED-][----Z---][----Y---][----X---][-----Value-----]
+	//			  8-bit      8-bit     8-bit	 8-bit		  32-bit
+	return uint2(GridConstuctKey(xyz), value);
+}
+
+unsigned int GridGetKey(uint2 keyvaluepair)
+{
+	return keyvaluepair.x;
+}
+
+unsigned int GridGetValue(uint2 keyvaluepair)
+{
+	return keyvaluepair.y;
+}
+
+
+//--------------------------------------------------------------------------------------
+// Build Grid
+//--------------------------------------------------------------------------------------
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void BuildGridCS(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
+{
+	const unsigned int P_ID = DTid.x; // Particle ID to operate on
+
+	float3 position = ParticlesRO[P_ID].position;
+	float3 grid_xyz = GridCalculateCell(position);
+
+	GridRW[P_ID] = GridConstuctKeyValuePair((uint3)grid_xyz, P_ID);
+}
+
+
+//--------------------------------------------------------------------------------------
+// Build Grid Indices
+//--------------------------------------------------------------------------------------
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void ClearGridIndicesCS(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
+{
+	GridIndicesRW[DTid.x] = uint2(0, 0);
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void BuildGridIndicesCS(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
+{
+	const unsigned int G_ID = DTid.x; // Grid ID to operate on
+	unsigned int G_ID_PREV = (G_ID == 0) ? g_iNumParticles : G_ID; G_ID_PREV--;
+	unsigned int G_ID_NEXT = G_ID + 1; if (G_ID_NEXT == g_iNumParticles) { G_ID_NEXT = 0; }
+
+	unsigned int cell = GridGetKey(GridRO[G_ID]);
+	unsigned int cell_prev = GridGetKey(GridRO[G_ID_PREV]);
+	unsigned int cell_next = GridGetKey(GridRO[G_ID_NEXT]);
+	if (cell != cell_prev)
+	{
+		// I'm the start of a cell
+		GridIndicesRW[cell].x = G_ID;
+	}
+	if (cell != cell_next)
+	{
+		// I'm the end of a cell
+		GridIndicesRW[cell].y = G_ID + 1;
+	}
+}
+
+
+//--------------------------------------------------------------------------------------
+// Rearrange Particles
+//--------------------------------------------------------------------------------------
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void RearrangeParticlesCS(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
+{
+	const unsigned int ID = DTid.x; // Particle ID to operate on
+	const unsigned int G_ID = GridGetValue(GridRO[ID]);
+	ParticlesRW[ID] = ParticlesRO[G_ID];
+}
+
+
+//--------------------------------------------------------------------------------------
+// Density Calculation
+//--------------------------------------------------------------------------------------
+
+float CalculateDensity(float r_sq)
+{
+	const float h_sq = g_fSmoothlen * g_fSmoothlen;
+	// Implements this equation:
+	// W_poly6(r, h) = 315 / (64 * pi * h^9) * (h^2 - r^2)^3
+	// g_fDensityCoef = fParticleMass * 315.0f / (64.0f * PI * fSmoothlen^9)
+	return g_fDensityCoef * (h_sq - r_sq) * (h_sq - r_sq) * (h_sq - r_sq);
+}
+
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void DensityCS_Grid(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
+{
+	const unsigned int P_ID = DTid.x;
+	const float h_sq = g_fSmoothlen * g_fSmoothlen;
+	float3 P_position = ParticlesRO[P_ID].position;
+
+	float density = 0;
+
+	// Calculate the density based on neighbors from the 8 adjacent cells + current cell
+	int3 G_XYZ = (int3)GridCalculateCell(P_position);
+	for (int Z = max(G_XYZ.z - 1, 0); Z <= min(G_XYZ.z + 1, 255); Z++)
+	{
+		for (int Y = max(G_XYZ.y - 1, 0); Y <= min(G_XYZ.y + 1, 255); Y++)
+		{
+			for (int X = max(G_XYZ.x - 1, 0); X <= min(G_XYZ.x + 1, 255); X++)
+			{
+				unsigned int G_CELL = GridConstuctKey(uint3(X, Y, Z));
+				uint2 G_START_END = GridIndicesRO[G_CELL];
+
+				for (unsigned int N_ID = G_START_END.x; N_ID < G_START_END.y; N_ID++)
+				{
+					float3 N_position = ParticlesRO[N_ID].position;
+
+					float3 diff = N_position - P_position;
+					float r_sq = dot(diff, diff);
+					if (P_ID != N_ID) {
+						while (r_sq == 0) {
+							switch ((P_ID * N_ID) % 6) {
+							case 0:
+								N_position.z += 0.0001f;
+								break;
+							case 1:
+								N_position.x -= 0.0001f;
+								break;
+							case 2:
+								N_position.x -= 0.0001f;
+								break;
+							case 3:
+								N_position.x += 0.0001f;
+								break;
+							case 4:
+								N_position.z -= 0.0001f;
+								break;
+							case 5:
+								N_position.z += 0.0001f;
+								break;
+								diff = N_position - P_position;
+								r_sq = dot(diff, diff);
+							}
+						}
+					}
+					if (r_sq < h_sq)
+					{
+						density += CalculateDensity(r_sq);
+					}
+				}
+			}
+		}
+	}
+	ParticlesDensityRW[P_ID].density = density;
+	//else
+	//ParticlesDensityRW[P_ID].density = CalculateDensity(0.0f);
+}
+float CalculatePressure(float density)
+{
+	// Implements this equation:
+	// Pressure = B * ((rho / rho_0)^y  - 1)
+	return g_fPressureStiffness * (density - g_fRestDensity);
+	float rho = density / g_fRestDensity;
+	return g_fPressureStiffness * ((rho*rho*rho) - 1);
+}
+
+float3 CalculateGradPressure(float r, float P_pressure, float N_pressure, float3 diff)
+{
+	const float h = g_fSmoothlen;
+	float avg_pressure = (N_pressure + P_pressure);
+	// Implements this equation:
+	// W_spkiey(r, h) = 15 / (pi * h^6) * (h - r)^3
+	// GRAD( W_spikey(r, h) ) = -45 / (pi * h^6) * (h - r)^2
+	// g_fGradPressureCoef = fParticleMass * -45.0f / (PI * fSmoothlen^6)
+	return g_fGradPressureCoef * avg_pressure * (h - r) * (h - r) * (diff) / (r);
+}
+
+float3 CalculateGradPressure(float r, float P_pressure, float N_pressure, float N_density, float3 diff)
+{
+	const float h = g_fSmoothlen;
+	float avg_pressure = 0.5f * (N_pressure + P_pressure);
+	// Implements this equation:
+	// W_spkiey(r, h) = 15 / (pi * h^6) * (h - r)^3
+	// GRAD( W_spikey(r, h) ) = -45 / (pi * h^6) * (h - r)^2
+	// g_fGradPressureCoef = fParticleMass * -45.0f / (PI * fSmoothlen^6)
+	return g_fGradPressureCoef * avg_pressure / N_density * (h - r) * (h - r) / r * (diff);
+}
+
+float3 CalculateLapVelocity(float r, float3 diff)
+{
+	const float h = g_fSmoothlen;
+	// Implements this equation:
+	// W_viscosity(r, h) = 15 / (2 * pi * h^3) * (-r^3 / (2 * h^3) + r^2 / h^2 + h / (2 * r) - 1)
+	// LAPLACIAN( W_viscosity(r, h) ) = 45 / (pi * h^6) * (h - r)
+	// g_fLapViscosityCoef = fParticleMass * fViscosity * 45.0f / (PI * fSmoothlen^6)
+	return g_fLapViscosityCoef * (h - r) * diff;
+}
+
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void ForceCS_Grid(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
+{
+	const unsigned int P_ID = DTid.x; // Particle ID to operate on
+
+	float3 P_position = ParticlesRO[P_ID].position;
+	float3 P_velocity = (ParticlesRO[P_ID].velocity + ParticlesRO[P_ID].lastVelocity) / 2.0f;
+	float P_density = ParticlesDensityRO[P_ID].density;
+	float P_pressure = CalculatePressure(P_density) / (P_density*P_density);
+
+	const float h_sq = g_fSmoothlen * g_fSmoothlen;
+
+	float3 accelerationPressure = float3(0, 0, 0);
+	float3 accelerationViscosity = float3(0, 0, 0);
+
+	// Calculate the acceleration based on neighbors from the 8 adjacent cells + current cell
+	int3 G_XY = (int3)GridCalculateCell(P_position);
+	for (int Z = max(G_XY.z - 1, 0); Z <= min(G_XY.z + 1, 255); Z++)
+	{
+		for (int Y = max(G_XY.y - 1, 0); Y <= min(G_XY.y + 1, 255); Y++)
+		{
+			for (int X = max(G_XY.x - 1, 0); X <= min(G_XY.x + 1, 255); X++)
+			{
+				unsigned int G_CELL = GridConstuctKey(uint3(X, Y, Z));
+				uint2 G_START_END = GridIndicesRO[G_CELL];
+				for (unsigned int N_ID = G_START_END.x; N_ID < G_START_END.y; N_ID++)
+				{
+					float3 N_position = ParticlesRO[N_ID].position;
+
+					float3 diff = N_position - P_position;
+					float r_sq = dot(diff, diff);
+					if (P_ID != N_ID) {
+						while (r_sq == 0) {
+							switch ((P_ID) % 6) {
+							case 0:
+								N_position.x += 0.02f;
+								break;
+							case 1:
+								N_position.z -= 0.02f;
+								break;
+							case 2:
+								N_position.x -= 0.02f;
+								break;
+							case 3:
+								N_position.x += 0.02f;
+								break;
+							case 4:
+								N_position.z -= 0.02f;
+								break;
+							case 5:
+								N_position.z += 0.02f;
+								break;
+								diff = N_position - P_position;
+								r_sq = dot(diff, diff);
+							}
+						}
+						if (r_sq < h_sq)
+						{
+							float3 N_velocity = (ParticlesRO[N_ID].velocity + ParticlesRO[N_ID].lastVelocity) / 2.0f;
+							float N_density = ParticlesDensityRO[N_ID].density;
+							float N_pressure = CalculatePressure(N_density) / (N_density*N_density);
+							float r = sqrt(r_sq);
+							// Pressure Term
+							if (r == 0)
+								r += 0.001f;
+							accelerationPressure += CalculateGradPressure(r, P_pressure, N_pressure, diff);
+
+							// Viscosity Term
+							accelerationViscosity += CalculateLapVelocity(r, (N_velocity - P_velocity)) / N_density;
+						}
+					}
+				}
+			}
+		}
+	}
+	ParticlesForcesRW[P_ID].acceleration = accelerationPressure + (accelerationViscosity) / P_density;
+	if (g_fBuoyancy <= 0.0001f)
+		ParticlesForcesRW[P_ID].acceleration += g_vGravity.xyz;
+	else
+		ParticlesForcesRW[P_ID].acceleration += ((P_density - g_fRestDensity) * g_fBuoyancy)*g_vGravity.xyz;
+}
+
+
+//--------------------------------------------------------------------------------------
+// Integration
+//--------------------------------------------------------------------------------------
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void IntegrateCS(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
+{
+	const unsigned int P_ID = DTid.x; // Particle ID to operate on
+
+	float3 position = ParticlesRO[P_ID].position;
+	float3 velocity = ParticlesRO[P_ID].velocity;
+	float3 lastVelocity = velocity;
+	float3 acceleration = ParticlesForcesRO[P_ID].acceleration;
+
+	// Apply gravity
+	//acceleration = g_vGravity.xyz;
+
+	// Integrate
+	velocity += g_fTimeStep * acceleration;
+	position += g_fTimeStep * velocity;
+
+	// Update
+	ParticlesRW[P_ID].position = position;
+	ParticlesRW[P_ID].velocity = velocity;
+	ParticlesRW[P_ID].lastVelocity = lastVelocity;
+}
+
+float3 sgn(float3 inF) {
+	float3 outF = inF;
+	if (outF.x < 0)
+		outF.x = -1;
+	else if (outF.x == 0)
+		outF.x = 0;
+	else
+		outF.x = 1;
+
+	if (outF.y < 0)
+		outF.y = -1;
+	else if (outF.y == 0)
+		outF.y = 0;
+	else
+		outF.y = 1;
+
+	if (outF.z < 0)
+		outF.z = -1;
+	else if (outF.z == 0)
+		outF.z = 0;
+	else
+		outF.z = 1;
+
+	return outF;
+}
+
+[numthreads(SIMULATION_BLOCK_SIZE, 1, 1)]
+void CollideCS(uint3 Gid : SV_GroupID, uint3 DTid : SV_DispatchThreadID, uint3 GTid : SV_GroupThreadID, uint GI : SV_GroupIndex)
+{
+	const unsigned int P_ID = DTid.x;
+
+	for (int i = g_iNumRigidBodies - 1; i >= 0; i--) {
+		float4 particlePos;
+		particlePos.xyz = ParticlesRW[P_ID].position;
+		particlePos.w = 1.0f;
+
+		CollisionInfo info;
+		info.isValid = false;
+
+		float4x4 OBBRotationMat = RigidBodiesRW[i].rotMat;   //R
+		float4 centerPos;
+		centerPos.xyz = RigidBodiesRW[i].position;
+		centerPos.w = 1.0f;									 //c
+															 // get local position of x according to OBB := x_local
+		float4x4 temp = RigidBodiesRW[i].invRotMat;//(inverse/transpose)
+		float4 x_local = mul((particlePos - centerPos), temp);
+
+		// local position of contact point according to OBB
+		float3 ext = RigidBodiesRW[i].size / 2.0f; //axis extends from the center of the OBB
+
+		if (0 == RigidBodiesRW[i].type) {
+			//case 0:                                              //cubes
+			float F = abs(x_local.x) - ext.x;
+			float curr = abs(x_local.y) - ext.y;
+			if (curr > F)
+				F = curr;
+			curr = abs(x_local.z) - ext.z;
+			if (curr > F)
+				F = curr;
+
+			if (i == 0) {
+				//	outside of container
+				if (F > 0) {
+					float4 CP_local = float4(0.0f, 0.0f, 0.0f, 0.0f);
+					CP_local.x = min(ext.x, max(-ext.x, x_local.x));
+					CP_local.y = min(ext.y, max(-ext.y, x_local.y));
+					CP_local.z = min(ext.z, max(-ext.z, x_local.z));
+					CP_local.w = 1.0f;
+
+					float3 norm = mul(sgn(CP_local - x_local), OBBRotationMat).xyz;
+					info.normal = -norm / (sqrt(dot(norm, norm)));
+					info.CP = centerPos + mul(CP_local, OBBRotationMat).xyz;
+					info.depth = sqrt(dot(CP_local - x_local, CP_local - x_local));
+					info.isValid = true;
+				}
+			}
+			else {
+				//	inside of normal OBB
+				if (F < 0) {
+					float4 CP_local = x_local;
+					uint index = 0;
+					float minVal = ext.x - abs(x_local.x);
+					float xPos = x_local.x;
+
+					float curr = ext.y - abs(x_local.y);
+					if (curr < minVal) {
+						minVal = curr;
+						index = 1;
+						xPos = x_local.y;
+					}
+					curr = ext.z - abs(x_local.z);
+					if (curr < minVal) {
+						minVal = curr;
+						index = 2;
+						xPos = x_local.z;
+					}
+
+					if (xPos < 0) {
+						switch (index) {
+						case 0:
+							CP_local.x = -ext.x;
+							break;
+						case 1:
+							CP_local.y = -ext.y;
+							break;
+						case 2:
+							CP_local.z = -ext.z;
+							break;
+						}
+					}
+					else {
+						switch (index) {
+						case 0:
+							CP_local.x = ext.x;
+							break;
+						case 1:
+							CP_local.y = ext.y;
+							break;
+						case 2:
+							CP_local.z = ext.z;
+							break;
+						}
+					}
+
+					float3 norm = mul(sgn(CP_local - x_local), OBBRotationMat).xyz;
+					info.normal = norm / (sqrt(dot(norm, norm)));
+					info.CP = centerPos + mul(CP_local, OBBRotationMat).xyz;
+					info.depth = sqrt(dot(CP_local - x_local, CP_local - x_local));
+					info.isValid = true;
+				}
+			}
+			//break;
+		}
+		else {
+			//case 1: //globes
+			float3 particlePos_ = particlePos.xyz;                                                  //x
+			float3 centerPos_ = centerPos.xyz;                                                      //c
+			float radius = ext.x * 2.0f;                                                            //r
+			if (centerPos_.x == particlePos_.x && centerPos_.y == particlePos_.y && centerPos_.z == particlePos_.z)
+				particlePos_.x += 0.01f;
+			float distSqrt = dot((particlePos_ - centerPos_), (particlePos_ - centerPos_));         //||x-c||^2
+
+																									//implicit primitives F(x)
+			float F_ = distSqrt - radius * radius;
+
+			if (i == 0) {
+				//	outside of sphere as container
+				if (F_ > 0) {
+					float dist = sqrt(distSqrt);
+					info.isValid = true;
+					info.depth = abs(dist - radius);
+					info.normal = (-centerPos_ + particlePos_) / (dist);
+					info.CP = centerPos_ + radius * info.normal;
+					info.normal = -info.normal;
+				}
+			}
+			else {
+				//	inside of sphere as rigidbody
+				if (F_ < 0) {
+					float dist = sqrt(distSqrt);
+					info.isValid = true;
+					info.depth = abs(dist - radius);
+					info.normal = (-centerPos_ + particlePos_) / (dist);
+					info.CP = centerPos_ + radius * info.normal;
+				}
+			}
+		}
+		//break;
+		//default:
+		//break;
+		//}
+
+		if (info.isValid) {
+			float3 cp = info.CP;
+			float3 norm = -info.normal;
+			float3 depth = info.depth;
+
+			ParticlesRW[P_ID].position = cp;
+			float3 vel = (ParticlesRW[P_ID].velocity + ParticlesRW[P_ID].lastVelocity) / 2.0f;
+
+			//	old impulse
+			/*
+			float t = sqrt(dot(vel, vel));
+
+			float3 impulse;
+			if (t > 0)
+			impulse = (1 + g_fRestitution * depth / (g_fTimeStep*t)) * dot(vel, norm) * norm;
+			else
+			impulse = float3(0.0f, 0.0f, 0.0f);
+
+			ParticlesRW[P_ID].velocity -= impulse;
+			ParticlesRW[P_ID].lastVelocity -= impulse;*/
+
+
+			float3 relativePositionToA = cp - RigidBodiesRW[i].position;
+			float3 relativePositionToB = float3(0, 0, 0);
+
+			//	calculate actual velocity at those points 
+			float3 velocityA = RigidBodiesRW[i].linVel + cross(RigidBodiesRW[i].angMom, relativePositionToA);
+			float3 velocityB = vel;
+
+			float relativeVelocity = dot(norm, (velocityA - velocityB)); // relative to collision point
+
+																		 //	get current Inertia Tensor
+			float4x4 InertiaA = RigidBodiesRW[i].inertia;
+			//	inverse mass is 0 if the rigidbody is a wall
+			float inverseMassA = (RigidBodiesRW[i].isStatic) ? 0 : 1.0f / RigidBodiesRW[i].mass;
+
+			float inverseMassB = 1.0f / g_fMass;
+			//	identity for particle
+			float4x4 InertiaB = float4x4(0.0f, 0.0f, 0.0f, 0.0f,
+				0.0f, 0.0f, 0.0f, 0.0f,
+				0.0f, 0.0f, 0.0f, 0.0f,
+				0.0f, 0.0f, 0.0f, 0.0f);
+
+			//	calculate J of the impulse
+			//	J = -(1 + c) * relVel / ( 1 / m_a + 1 / m_b + dot((InertiaA * (x_a x n)) x x_a), (InertiaB * (x_b x n)) x x_b)))
+			float J = (-(1 + g_fRestitution) * relativeVelocity) / (inverseMassA + inverseMassB + dot(
+				cross(mul(cross(relativePositionToA, norm), InertiaA), relativePositionToA) +
+				cross(mul(cross(relativePositionToB, norm), InertiaB), relativePositionToB), norm)
+				);
+
+			//	update linear velocities
+			ParticlesRW[P_ID].velocity -= (J*norm * inverseMassB);
+			ParticlesRW[P_ID].lastVelocity -= (J*norm * inverseMassB);
+
+			//	update angular momentum, multiplied with constant 
+			RigidBodiesRW[i].linVel += (J*norm * inverseMassA);
+			RigidBodiesRW[i].angMom += cross(relativePositionToA, J*norm) * 0.02f;
+
+		}
+	}
+}
+

@@ -52,12 +52,12 @@ public class HeightField : MonoBehaviour
     /// <summary>
     /// Width of the generated mesh
     /// </summary>
-    [Range(8, 254)]
+    [Range(1, 254)]
     public int width;
     /// <summary>
     /// Depth of the generated mesh
     /// </summary>
-    [Range(8, 254)]
+    [Range(1, 254)]
     public int depth;
     /// <summary>
     /// Distance between vertices of the generated mesh
@@ -110,6 +110,7 @@ public class HeightField : MonoBehaviour
     private Vector3[] vertices;
 
     private uint currentCollision;
+    private float lastUpdateHF;
 
     private CreateReflectionTexture crt;
 
@@ -303,30 +304,36 @@ public class HeightField : MonoBehaviour
     private void updateHeightfield()
     {
         //  calculate approximate average of all points in the heightfield (might be unecessary)
-        float currentAvgHeight = 0.0f;
-        int length = Math.Min(depth, width);
+        averageHeight = 0.0f;
+        int length = (int)Math.Ceiling(Math.Min(depth, width)/2f);
+
         for (int i = 0; i < length; i++)
         {
-            currentAvgHeight += hf[i * depth + i].height;
+            averageHeight += hf[i * depth + i].height;
         }
         for (int i = length - 1; i >= 0; i--)
         {
-            currentAvgHeight += hf[i * depth + i].height;
+            int j = 0;
+            averageHeight += hf[i * depth + j].height;
+            j++;
         }
-        currentAvgHeight /= (length * 2f);
-        averageHeight = currentAvgHeight;
+        averageHeight /= (length*2f);
 
+        print(averageHeight);
+
+        float dt = lastUpdateHF - Time.time;
+        lastUpdateHF = Time.time;
 
         heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
         heightFieldCS.SetBuffer(kernel, "reflectWaves", reflectWavesCB);
         heightFieldCS.SetBuffer(kernel, "heightFieldOut", heightFieldCBOut);
 
-        heightFieldCS.SetFloat("g_fDeltaTime", Time.deltaTime);
+        heightFieldCS.SetFloat("g_fDeltaTime", dt);
         heightFieldCS.SetFloat("g_fSpeed", speed);
         heightFieldCS.SetFloat("g_fMaxVelocity", maxVelocity);
         heightFieldCS.SetFloat("g_fMaxHeight", maxHeight);
         heightFieldCS.SetFloat("g_fDamping", dampingVelocity);
-        heightFieldCS.SetFloat("g_fAvgHeight", currentAvgHeight);
+        heightFieldCS.SetFloat("g_fAvgHeight", averageHeight);
         heightFieldCS.SetFloat("g_fGridSpacing", Mathf.Max(gridSpacing, 1f));
 
         heightFieldCS.Dispatch(kernel, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
