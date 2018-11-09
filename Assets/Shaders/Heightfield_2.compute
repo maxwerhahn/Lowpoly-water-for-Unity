@@ -43,74 +43,60 @@ void updateHeightfield(uint3 id : SV_DispatchThreadID)
 	//	h[i,j]_t equivalent
 
 	float totalHeight = 0.0f;
-
+	int indexSurr = 0;
 	//	calculate total height of surrounding values, consider obstacles
-	if (reflectWaves[max(i - 1, 0) * g_iDepth + j] == 0)
-		totalHeight += heightFieldIn[max(i - 1, 0) * g_iDepth + j].height;
-	else
-		totalHeight += heightFieldIn[i * g_iDepth + j].height;
 
-	if (reflectWaves[min(g_iWidth - 1, i + 1) * g_iDepth + j] == 0)
-		totalHeight += heightFieldIn[min(g_iWidth - 1, i + 1) * g_iDepth + j].height;
-	else
-		totalHeight += heightFieldIn[i * g_iDepth + j].height;
+	totalHeight += max((1 - reflectWaves[max(i - 1, 0) * g_iDepth + j]), 0) * heightFieldIn[max(i - 1, 0) * g_iDepth + j].height;
+	indexSurr += max((1 - reflectWaves[max(i - 1, 0) * g_iDepth + j]), 0);
 
-	if (reflectWaves[i * g_iDepth + max(j - 1, 0)] == 0)
-		totalHeight += heightFieldIn[i * g_iDepth + max(j - 1, 0)].height;
-	else
-		totalHeight += heightFieldIn[i * g_iDepth + j].height;
+	totalHeight += max((1 - reflectWaves[min(g_iWidth - 1, i + 1) * g_iDepth + j]), 0) * heightFieldIn[min(g_iWidth - 1, i + 1) * g_iDepth + j].height;
+	indexSurr += max((1 - reflectWaves[min(g_iWidth - 1, i + 1) * g_iDepth + j]), 0);
 
-	if (reflectWaves[i * g_iDepth + min(j + 1, g_iDepth - 1)] == 0)
-		totalHeight += heightFieldIn[i * g_iDepth + min(g_iDepth - 1, min(j + 1, g_iDepth - 1))].height;
-	else
-		totalHeight += heightFieldIn[i * g_iDepth + j].height;
+	totalHeight += max((1 - reflectWaves[i * g_iDepth + max(j - 1, 0)]), 0) * heightFieldIn[i * g_iDepth + max(j - 1, 0)].height;
+	indexSurr += max((1 - reflectWaves[i * g_iDepth + max(j - 1, 0)]), 0);
+
+	totalHeight += max((1 - reflectWaves[i * g_iDepth + min(j + 1, g_iDepth - 1)]), 0) *  heightFieldIn[i * g_iDepth + min(g_iDepth - 1, min(j + 1, g_iDepth - 1))].height;
+	indexSurr += max((1 - reflectWaves[i * g_iDepth + min(j + 1, g_iDepth - 1)]), 0);
 
 	float totalHeightDiag = 0.0f;
+	int indexSurrDiag = 0;
 
-	if (reflectWaves[max(i - 1, 0) * g_iDepth + max(j - 1, 0)] == 0)
-		totalHeightDiag += heightFieldIn[max(i - 1, 0) * g_iDepth + max(j - 1, 0)].height;
-	else
-		totalHeightDiag += heightFieldIn[i * g_iDepth + j].height;
+	totalHeightDiag += max((1 - reflectWaves[max(i - 1, 0) * g_iDepth + max(j - 1, 0)]), 0) * heightFieldIn[max(i - 1, 0) * g_iDepth + max(j - 1, 0)].height;
+	indexSurrDiag += max((1 - reflectWaves[max(i - 1, 0) * g_iDepth + max(j - 1, 0)]), 0);
 
-	if (reflectWaves[min(g_iWidth - 1, i + 1) * g_iDepth + min(j + 1, g_iDepth - 1)] == 0)
-		totalHeightDiag += heightFieldIn[min(g_iWidth - 1, i + 1) * g_iDepth + min(j + 1, g_iDepth - 1)].height;
-	else
-		totalHeightDiag += heightFieldIn[i * g_iDepth + j].height;
+	totalHeightDiag += max((1 - reflectWaves[min(g_iWidth - 1, i + 1) * g_iDepth + max(j - 1, 0)]), 0) * heightFieldIn[min(g_iWidth - 1, i + 1) * g_iDepth + max(j - 1, 0)].height;
+	indexSurrDiag += max((1 - reflectWaves[min(g_iWidth - 1, i + 1) * g_iDepth + max(j - 1, 0)]), 0);
 
-	if (reflectWaves[min(g_iWidth - 1, i + 1) * g_iDepth + max(j - 1, 0)] == 0)
-		totalHeightDiag += heightFieldIn[min(g_iWidth - 1, i + 1) * g_iDepth + max(j - 1, 0)].height;
-	else
-		totalHeightDiag += heightFieldIn[i * g_iDepth + j].height;
+	totalHeightDiag += max((1 - reflectWaves[min(g_iWidth - 1, i + 1) * g_iDepth + min(j + 1, g_iDepth - 1)]), 0) * heightFieldIn[min(g_iWidth - 1, i + 1) * g_iDepth + min(j + 1, g_iDepth - 1)].height;
+	indexSurrDiag += max((1 - reflectWaves[min(g_iWidth - 1, i + 1) * g_iDepth + min(j + 1, g_iDepth - 1)]), 0);
 
-	if (reflectWaves[max(i - 1, 0) * g_iDepth + min(j + 1, g_iDepth - 1)] == 0)
-		totalHeightDiag += heightFieldIn[max(i - 1, 0) * g_iDepth + min(j + 1, g_iDepth - 1)].height;
-	else
-		totalHeightDiag += heightFieldIn[i * g_iDepth + j].height;
+	totalHeightDiag += max((1 - reflectWaves[max(i - 1, 0) * g_iDepth + min(j + 1, g_iDepth - 1)]), 0) * heightFieldIn[max(i - 1, 0) * g_iDepth + min(j + 1, g_iDepth - 1)].height;
+	indexSurrDiag += max((1 - reflectWaves[max(i - 1, 0) * g_iDepth + min(j + 1, g_iDepth - 1)]), 0);
 
 	//	different behaviour at obstacle or wall
-	if (reflectWaves[i * g_iDepth + j] != 0) {
-		heightFieldOut[i * g_iDepth + j].height = (totalHeight + totalHeightDiag) / 8.0f;
-		//heightFieldOut[i * g_iDepth + j].height -= g_fAvgHeight;
-	}
-	else {
 		//	wave equation in 2D, semi-implicit euler
 		//	max and min used for clamping the boundary and reflecting the waves
 		//	v[i, j]_(t+1) = v_t + dt * c * c * ((h[i - 1, j] + h[i + 1, j] + h[i, j + 1] + h[i, j - 1])- 4 * h[i, j]_t)	/ (g_fGridSpacing * g_fGridSpacing)
-		heightFieldOut[i * g_iDepth + j].velocity = heightFieldIn[i * g_iDepth + j].velocity * g_fDamping + g_fDeltaTime * g_fSpeed * g_fSpeed *
-			(totalHeight - 4 * (heightFieldIn[i * g_iDepth + j].height) + (totalHeightDiag - 4 * (heightFieldIn[i * g_iDepth + j].height)) / 1.0f) / (g_fGridSpacing * g_fGridSpacing);
+	if (reflectWaves[i * g_iDepth + j] != 0)
+	{
+		heightFieldOut[i * g_iDepth + j].height = 0;// heightFieldOut[i * g_iDepth + j].height * (8.0 - (indexSurrDiag + indexSurr)) + totalHeight + totalHeightDiag;
+		heightFieldOut[i * g_iDepth + j].height *= 0.125f;
+	}
+	else {
+		heightFieldOut[i * g_iDepth + j].velocity = heightFieldIn[i * g_iDepth + j].velocity * g_fDamping * max((1 - reflectWaves[i * g_iDepth + j]), 0) + g_fDeltaTime * g_fSpeed * g_fSpeed *
+			(totalHeight - indexSurr * (heightFieldIn[i * g_iDepth + j].height) + (totalHeightDiag - indexSurrDiag * (heightFieldIn[i * g_iDepth + j].height)) / 1.41f) / (g_fGridSpacing * g_fGridSpacing);
 
 		//	clamping and damping of velocity
 		heightFieldOut[i * g_iDepth + j].velocity = clamp(heightFieldOut[i * g_iDepth + j].velocity, -g_fMaxVelocity, g_fMaxVelocity);
 
 		//	integrate height at timestep t+1:  h[i,j]_t+1 = h[i,j]_t + v[i,j]_t * dt 
 		heightFieldOut[i * g_iDepth + j].height = heightFieldIn[i*g_iDepth + j].height + heightFieldOut[i * g_iDepth + j].velocity * g_fDeltaTime;
-
-		//	keep average Height of all points at ca. 0
-		// heightFieldOut[i * g_iDepth + j].height -= g_fAvgHeight;
-
+	
 		//	clamp height
 		heightFieldOut[i * g_iDepth + j].height = clamp(heightFieldOut[i * g_iDepth + j].height, -g_fMaxHeight, g_fMaxHeight);
 	}
+	//	keep average Height of all points at ca. 0
+	// heightFieldOut[i * g_iDepth + j].height -= g_fAvgHeight;
 }
 
 RWStructuredBuffer<float3> verticesPosition : register(u1);

@@ -22,13 +22,13 @@ Shader "Custom/HeightFieldRender" {
 	}
 		SubShader{
 		Tags { "Queue" = "Transparent" "IgnoreProjector" = "True" "RenderMode" = "Transparent" }
-		
+
 		CGINCLUDE
 
 		#include "UnityCG.cginc"
 		#include "AutoLight.cginc"
 		#include "Lighting.cginc"
-			
+
 		float g_directionalLight;
 		float g_Attenuation;
 		float g_Reflection;
@@ -46,11 +46,14 @@ Shader "Custom/HeightFieldRender" {
 
 		uniform sampler2D _CameraDepthTexture;
 		sampler2D _ReflectionTex;
-		
-			struct appdata {
+
+		StructuredBuffer<float3> verticesPosition : register(t1);
+
+		struct appdata {
 			float4 vertex : POSITION;
 			float3 normal : NORMAL;
 			float4 color : COLOR;
+			uint id : SV_VertexID;
 		};
 
 		struct v2g
@@ -62,12 +65,15 @@ Shader "Custom/HeightFieldRender" {
 			float4 refl : TEXCOORD1;
 			//SHADOW_COORDS(3)
 		};
-		
+
 		v2g vert(appdata v)
 		{
 			v2g o;
-			float3 pos = (v.vertex);
-			o.vertex = v.vertex;
+			float3 pos = v.vertex.xyz;
+			uint idnx = round(pos.x / g_fQuadSize) * g_iDepth + round(pos.z / g_fQuadSize);
+			pos = verticesPosition[idnx];
+
+			o.vertex = float4(pos, 1.0f);
 			o.lightingColor = g_Color;
 			o.normal = v.normal;
 			o.projPos = ComputeScreenPos(UnityObjectToClipPos(pos));
@@ -75,7 +81,7 @@ Shader "Custom/HeightFieldRender" {
 			//TRANSFER_SHADOW(o);
 			return o;
 		}
-				
+
 		fixed4 frag(v2g i) : SV_Target
 		{
 			//fixed shadow = SHADOW_ATTENUATION(i);
@@ -118,7 +124,7 @@ Shader "Custom/HeightFieldRender" {
 					half3 lightOut;
 					half distance = length(lightDir);
 					lightDir = lightDir / distance;
-					distance = distance * distance; 
+					distance = distance * distance;
 
 					half NdotL = dot(normal, lightDir);
 					half intensity = saturate(NdotL);
@@ -173,9 +179,9 @@ Shader "Custom/HeightFieldRender" {
 
 					half3 dist = lightPosition.xyz - pos;
 					half3 dir = normalize(dist);
-					half squaredDistance =	dot(dist, dist);
+					half squaredDistance = dot(dist, dist);
 					half att = g_Attenuation / (1.0f + unity_4LightAtten0[i] * squaredDistance);
-					
+
 					if (dot(normalDirection, dir) < 0.0f) {
 						diffuseReflection = (diffuseReflection + 0.5f * att * unity_LightColor[i].rgb * g_Color.rgb * max(0.0, dot(-normalDirection, dir)));
 					}
@@ -186,7 +192,7 @@ Shader "Custom/HeightFieldRender" {
 				}
 				return half4(specularReflection + diffuseReflection + UNITY_LIGHTMODEL_AMBIENT * g_Color.rgb, g_Color.w);
 			}
-			
+
 			[maxvertexcount(3)]
 			void geom(triangle v2g p[3], inout TriangleStream<v2g> tristream)
 			{
@@ -198,7 +204,7 @@ Shader "Custom/HeightFieldRender" {
 				v2g o = p[0];
 				v2g o1 = p[1];
 				v2g o2 = p[2];
-
+				
 				float3 n = normalize(cross(pos1 - pos, pos2 - pos));
 				float3 avgPos = (pos + pos1 + pos2) / 3.0f;
 				half4 color = lighting(avgPos, n);
@@ -227,7 +233,7 @@ Shader "Custom/HeightFieldRender" {
 				tristream.RestartStrip();
 			}
 			ENDCG
-			}			
-		}
+			}
+	}
 		Fallback "VertexLit"
 }

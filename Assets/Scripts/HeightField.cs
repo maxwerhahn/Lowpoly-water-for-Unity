@@ -52,12 +52,12 @@ public class HeightField : MonoBehaviour
     /// <summary>
     /// Width of the generated mesh
     /// </summary>
-    [Range(1, 254)]
+    [Range(1, 2048)]
     public int width;
     /// <summary>
     /// Depth of the generated mesh
     /// </summary>
-    [Range(1, 254)]
+    [Range(1, 2048)]
     public int depth;
     /// <summary>
     /// Distance between vertices of the generated mesh
@@ -112,11 +112,14 @@ public class HeightField : MonoBehaviour
     private uint currentCollision;
     private float lastUpdateHF;
 
+    private int inOutCounter;
+
     private CreateReflectionTexture crt;
 
     private void Start()
     {
         Initialize();
+        inOutCounter = 0;
     }
 
     void Initialize()
@@ -246,7 +249,7 @@ public class HeightField : MonoBehaviour
             {
                 if (i != 0 && j != 0 && i != width - 1 && j != depth - 1)
                     randomDisplacement[i * depth + j] = new Vector2(UnityEngine.Random.Range(-maxRandomDisplacement * quadSize / 3.0f, maxRandomDisplacement * quadSize / 3.0f),
-                    UnityEngine.Random.Range(-maxRandomDisplacement * quadSize / 3.0f, maxRandomDisplacement * quadSize / 3.0f));
+                    UnityEngine.Random.Range(-maxRandomDisplacement * quadSize / 2.2f, maxRandomDisplacement * quadSize / 2.2f));
             }
         }
         lastMaxRandomDisplacement = maxRandomDisplacement;
@@ -297,6 +300,16 @@ public class HeightField : MonoBehaviour
         Shader.SetGlobalFloat("g_fQuadSize", quadSize);
         Shader.SetGlobalInt("g_iDepth", depth);
         Shader.SetGlobalInt("g_iWidth", width);
+
+        heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
+        heightFieldCS.SetBuffer(kernel, "reflectWaves", reflectWavesCB);
+        heightFieldCS.SetBuffer(kernel, "heightFieldOut", heightFieldCBOut);
+
+        heightFieldCS.SetBuffer(kernelVertices, "heightFieldIn", heightFieldCB);
+        heightFieldCS.SetBuffer(kernelVertices, "verticesPosition", verticesCB);
+        heightFieldCS.SetBuffer(kernelVertices, "randomDisplacement", randomXZ);
+
+        Shader.SetGlobalBuffer("verticesPosition", verticesCB);
     }
 
 
@@ -305,7 +318,7 @@ public class HeightField : MonoBehaviour
     {
         //  calculate approximate average of all points in the heightfield (might be unecessary)
         averageHeight = 0.0f;
-        int length = (int)Math.Ceiling(Math.Min(depth, width)/2f);
+        /*int length = (int)Math.Ceiling(Math.Min(depth, width)/2f);
 
         for (int i = 0; i < length; i++)
         {
@@ -318,15 +331,11 @@ public class HeightField : MonoBehaviour
             j++;
         }
         averageHeight /= (length*2f);
-
+        
         print(averageHeight);
-
+        */
         float dt = lastUpdateHF - Time.time;
         lastUpdateHF = Time.time;
-
-        heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
-        heightFieldCS.SetBuffer(kernel, "reflectWaves", reflectWavesCB);
-        heightFieldCS.SetBuffer(kernel, "heightFieldOut", heightFieldCBOut);
 
         heightFieldCS.SetFloat("g_fDeltaTime", dt);
         heightFieldCS.SetFloat("g_fSpeed", speed);
@@ -336,28 +345,48 @@ public class HeightField : MonoBehaviour
         heightFieldCS.SetFloat("g_fAvgHeight", averageHeight);
         heightFieldCS.SetFloat("g_fGridSpacing", Mathf.Max(gridSpacing, 1f));
 
+        if(inOutCounter == 0)
+        {
+            heightFieldCS.SetBuffer(kernel, "heightFieldOut", heightFieldCBOut);
+            heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCB);
+        }
+        else
+        {
+            heightFieldCS.SetBuffer(kernel, "heightFieldOut", heightFieldCB);
+            heightFieldCS.SetBuffer(kernel, "heightFieldIn", heightFieldCBOut);
+        }
+
         heightFieldCS.Dispatch(kernel, Mathf.CeilToInt(width / 16.0f), Mathf.CeilToInt(depth / 16.0f), 1);
-        heightFieldCBOut.GetData(hf);
-        heightFieldCB.SetData(hf);
+
+        if (inOutCounter == 0)
+        {
+//            heightFieldCBOut.GetData(hf);
+            heightFieldCS.SetBuffer(kernelVertices, "heightFieldIn", heightFieldCBOut);
+        }
+        else
+        {
+  //          heightFieldCB.GetData(hf);
+            heightFieldCS.SetBuffer(kernelVertices, "heightFieldIn", heightFieldCB);
+        }
+        // heightFieldCB.SetData(hf);
         if (waterMode == WaterMode.Obstacles || waterMode == WaterMode.ReflAndObstcl)
             environment = new uint[width * depth];
+
+        inOutCounter = (inOutCounter + 1) % 2;
     }
 
     private void updateVertices()
     {
         Mesh mesh = GetComponent<MeshFilter>().mesh;
         Vector3[] verts = mesh.vertices;
-
-        verticesCB.SetData(vertices);
-        heightFieldCS.SetBuffer(kernelVertices, "heightFieldIn", heightFieldCB);
+        verticesCB.SetData(mesh.vertices);
         heightFieldCS.SetBuffer(kernelVertices, "verticesPosition", verticesCB);
-        heightFieldCS.SetBuffer(kernelVertices, "randomDisplacement", randomXZ);
+        heightFieldCS.Dispatch(kernelVertices, Mathf.CeilToInt(verts.Length / 256f) + 1, 1, 1);
+        // verticesCB.GetData(verts);
 
-        heightFieldCS.Dispatch(kernelVertices, Mathf.CeilToInt(verts.Length / 256) + 1, 1, 1);
-        verticesCB.GetData(verts);
-
-        mesh.vertices = verts;
-        //mesh.RecalculateNormals();
+        Shader.SetGlobalBuffer("verticesPosition", verticesCB);
+        // mesh.vertices = verts;
+        // mesh.RecalculateNormals();
         GetComponent<MeshFilter>().mesh = mesh;
     }
 
@@ -404,6 +433,7 @@ public class HeightField : MonoBehaviour
         }
         //  create new mesh
         Mesh mesh = new Mesh();
+        mesh.indexFormat = UnityEngine.Rendering.IndexFormat.UInt32;
 
         mesh.MarkDynamic();
         mesh.vertices = newVertices;

@@ -4,7 +4,7 @@
 Material:
   serializedVersion: 6
   m_ObjectHideFlags: 0
-  m_PrefabParentObject: {fileID: 0}
+  m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInternal: {fileID: 0}
   m_Name: mesh
   m_Shader: {fileID: 4800000, guid: 89b3e96f790e23645bd587a36de5027e, type: 3}
@@ -121,14 +121,14 @@ Material:
     - _ZWrite: 1
     - _isBending: 0
     - g_Attenuation: 1
-    - g_DepthVisible: 312.72
-    - g_DistortionFactor: 69
-    - g_FoamDepth: 0.1
+    - g_DepthVisible: 426
+    - g_DistortionFactor: 362
+    - g_FoamDepth: 0.137
     - g_Glossiness: 0.5
     - g_Metallic: 0
     - g_PointLightIntensity: 0
-    - g_Reflection: 0.2
-    - g_Shininess: 100
+    - g_Reflection: 0.338
+    - g_Shininess: 169
     - g_directionalLight: 0
     - g_fQuadSize: 8
     - g_iDepth: 128
